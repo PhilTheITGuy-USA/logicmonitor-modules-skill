@@ -1,0 +1,8 @@
+{
+  "skill_name": "logicmonitor-modules",
+  "evals": [
+    {"id": 1, "prompt": "Write a LogicMonitor BatchScript DataSource that monitors TrueNAS SCALE storage pool capacity and health using the TrueNAS REST API (GET /api/v2.0/pool returns every pool). I need the Active Discovery Groovy, the collection Groovy, and an importable module JSON. Save them as files.", "expected_output": "AD + collect Groovy and a module JSON with ##WILDVALUE##-prefixed interpretExpr, stable wildvalues, numeric output, exit 2 on failure, .credential property, no auto-delete", "files": []},
+    {"id": 2, "prompt": "My new LogicMonitor DataSource (attached, Acme_Array_Volumes.json) discovers volume instances fine and 'Test Collection Script' in the portal shows output that looks right, but every datapoint on every instance shows No Data. What's wrong? Give me a fixed JSON file plus an explanation.", "expected_output": "Identifies bare interpretExpr on a batchscript as root cause; also flags State string value, unsafe wildvalue, useWildValueAsUniqueIdentifier false, auto-delete", "files": ["inputs/Acme_Array_Volumes.json"]},
+    {"id": 3, "prompt": "Build me an importable LogicMonitor dashboard JSON for my TrueNAS modules (definitions attached in modules_for_dashboard.json): a table showing every pool's used percent, capacity and free space, and a line graph of CPU usage for all nodes. Everything lives on one TrueNAS resource as instances.", "expected_output": "Dashboard JSON using dynamicTable + cgraph with reference key sets, module refs 'TrueNAS Pools (TrueNAS_Pools)', ##INSTANCE## legend, allowed topX/displayType/min-max/colorThresholds list", "files": ["inputs/modules_for_dashboard.json"]}
+  ]
+}

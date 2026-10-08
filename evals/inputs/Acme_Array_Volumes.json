@@ -1,0 +1,23 @@
+{
+  "name": "Acme_Array_Volumes",
+  "displayedAs": "Acme Array Volumes",
+  "description": "Volume capacity for Acme storage arrays.",
+  "appliesTo": "system.sysinfo =~ \"Acme\"",
+  "collectionMethod": "batchscript",
+  "collectionInterval": "5m",
+  "collectionAttrs": {"type": "groovy", "content": "def vols = getVolumes()\nvols.each { v ->\n  println v.name + '.UsedPercent=' + v.used_pct\n  println v.name + '.State=' + v.state\n}\nreturn 0"},
+  "multiInstance": true,
+  "useWildValueAsUniqueIdentifier": false,
+  "dataSourceType": 1,
+  "type": 0,
+  "datapoints": [
+    {"name": "UsedPercent", "type": "gauge", "useValue": "output", "interpretMethod": "namevalue", "interpretExpr": "UsedPercent", "dataType": 7, "threshold": "> 80 90 95"},
+    {"name": "State", "type": "gauge", "useValue": "output", "interpretMethod": "namevalue", "interpretExpr": "State", "dataType": 7, "threshold": "< 1 1 1"}
+  ],
+  "activeDiscovery": {
+    "enabled": true, "discoveryMethod": "ad_script",
+    "params": {"type": "groovy", "content": "getVolumes().each { v -> println v.name + '##' + v.name }\nreturn 0"},
+    "discoveryInterval": "60m", "deleteInactiveInstances": true, "autoDeleteInstances": true,
+    "disableDiscoveredInstances": false, "groupMethod": "none", "filters": []
+  }
+}
