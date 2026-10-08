@@ -64,3 +64,6 @@ New-Item -ItemType Junction -Path "$HOME\.claude\skills\logicmonitor-modules" -T
 |---|---|---|---|
 | 1 | subagents inside the Proxmox repo (its CLAUDE.md leaked into the baseline) | 100% | 85% |
 | 2 | isolated `claude -p`, empty directories | 100% | 50% |
+
+Trigger accuracy (`evals/trigger_eval.py`, 20 queries × 3 runs, 2026-10-08): **20/20** with the
+current description. Weakest: the LMv1 REST-signing query, triggered 2 of 3 runs.
