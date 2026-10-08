@@ -66,4 +66,5 @@ New-Item -ItemType Junction -Path "$HOME\.claude\skills\logicmonitor-modules" -T
 | 2 | isolated `claude -p`, empty directories | 100% | 50% |
 
 Trigger accuracy (`evals/trigger_eval.py`, 20 queries × 3 runs, 2026-10-08): **20/20** with the
-current description. Weakest: the LMv1 REST-signing query, triggered 2 of 3 runs.
+original description (LMv1 REST-signing query weakest, 2 of 3 runs). After adding LMv1/401 and
+bearer-token wording to the description: **20/20**, LMv1 query 3 of 3.
