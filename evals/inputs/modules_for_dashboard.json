@@ -1,0 +1,6 @@
+[
+  {"name": "TrueNAS_Pools", "displayedAs": "TrueNAS Pools", "collectionMethod": "batchscript",
+   "datapoints": ["UsedPercent", "CapacityGB", "FreeGB", "Healthy"]},
+  {"name": "TrueNAS_Nodes", "displayedAs": "TrueNAS Nodes", "collectionMethod": "batchscript",
+   "datapoints": ["CPUUsagePercent", "MemoryUsagePercent", "UpTimeSeconds"]}
+]

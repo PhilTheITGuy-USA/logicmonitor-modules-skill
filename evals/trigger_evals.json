@@ -1,0 +1,22 @@
+[
+  {"query": "can you write me a logicmonitor datasource for our truenas scale boxes? want pool usage + health per pool, theres a rest api at /api/v2.0/pool. groovy please, and the json so i can import it", "should_trigger": true},
+  {"query": "LM question - my batchscript datasource discovers all 40 volumes fine and Test Script shows vol01.UsedPercent=42 etc but every datapoint graph says No Data. interpretExpr on the datapoints is just UsedPercent. what am I missing", "should_trigger": true},
+  {"query": "I'm calling the LogicMonitor REST API from python with LMv1 auth and keep getting 401. I'm doing hmac sha256 of method+epoch+body+path and base64ing the digest bytes. resourcePath is /device/devices?size=50. what's wrong?", "should_trigger": true},
+  {"query": "imported a dashboard json into our logicmonitor portal and it only shows 6 of the 9 widgets, there was some vague 'incompatible version or configuration' warning. how do i figure out which ones got dropped and why", "should_trigger": true},
+  {"query": "Our addCategory_Synology PropertySource has AppliesTo true() and now the Synology datasources are applying to random linux servers in the portal. here's the groovy, can you see why", "should_trigger": true},
+  {"query": "upgrading our collectors and a bunch of our custom groovy scripts fail with 'unable to resolve class XmlSlurper' and push() missing on lists. how should I fix these for the new runtime", "should_trigger": true},
+  {"query": "vmware datastore names have colons and spaces in them and my active discovery output keeps getting rejected / instances look broken. what characters are allowed in the instance id and how should I build it", "should_trigger": true},
+  {"query": "We're about to submit our Pure Storage module suite to the LM Exchange. Can you review the module JSON files in ./modules for anything that would get flagged or break on import?", "should_trigger": true},
+  {"query": "want a TopologySource so our Nutanix AHV VMs show up under their hosts on the LogicMonitor resource map. how do I emit the edges and match vertices to existing resources", "should_trigger": true},
+  {"query": "how do I use the Logic.Monitor powershell module to import all the datasource json files in a folder into our portal and overwrite existing ones but keep customer thresholds", "should_trigger": true},
+  {"query": "write a prometheus exporter in go that scrapes the truenas scale /api/v2.0/pool endpoint and exposes pool usage and health as gauges", "should_trigger": false},
+  {"query": "need a zabbix template for proxmox ve nodes and VMs using the proxmox API with an api token, items for cpu mem and disk", "should_trigger": false},
+  {"query": "build me a grafana dashboard json with a table of pool used percent and a timeseries panel of node cpu, datasource is prometheus", "should_trigger": false},
+  {"query": "write a Datadog custom agent check in python that polls our storage array REST API and submits volume capacity metrics with tags per volume", "should_trigger": false},
+  {"query": "my Jenkinsfile groovy uses JsonSlurper to parse an API response and it fails with NotSerializableException LazyMap in the pipeline. how do I fix it", "should_trigger": false},
+  {"query": "how do I create a Proxmox API token with PVEAuditor permissions for the terraform bpg/proxmox provider? privilege separation on or off?", "should_trigger": false},
+  {"query": "write a nagios / icinga check plugin in bash that alerts when a TLS certificate on host:8006 expires within 30 days", "should_trigger": false},
+  {"query": "we're evaluating logicmonitor vs datadog vs new relic for ~800 hosts, mostly vmware and windows. what are the pricing models and main tradeoffs", "should_trigger": false},
+  {"query": "python script that hits the truenas REST api and writes every pool's name, size, allocated and health to a csv file every hour via cron", "should_trigger": false},
+  {"query": "what snmp OIDs does synology DSM expose for disk temperature and raid status? give me snmpwalk commands to test them", "should_trigger": false}
+]
