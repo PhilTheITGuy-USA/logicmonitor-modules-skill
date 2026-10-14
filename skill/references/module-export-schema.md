@@ -47,7 +47,15 @@ silent-failure rules on this page and in `collector-scripting.md`.
 - `useWildValueAsUniqueIdentifier: true` on every multiInstance module — this makes the wildvalue the
   instance identity. Nothing in the portal warns if it's missing.
 - `registryMetadata` / `integrationMetadata` lineage blocks appear in published modules but are **not
-  required** for import — don't fabricate them. **[portal]**
+  required** for import — don't fabricate them. **[portal]** Nor copy them, or `version`, or a
+  datapoint's `originId`, from an export into a new module: the portal assigns those **[LM recipes]**.
+- `displayedAs` uses spaces, `name` underscores. A trailing `-` on `displayedAs` (`Nginx-`) is LM's
+  convention for multi-instance modules and shows up in dashboard references; avoid internal
+  hyphens **[LM recipes]**.
+
+Other module types (Log, Event, Config, Diagnostic, Remediation): `other-module-types.md`.
+Provenance tag **[LM recipes]** = LogicMonitor's `monitoring-recipes` guidance @ `a7b45b6`, not yet
+observed in a portal here.
 
 ## 2. Datapoints
 
@@ -83,7 +91,39 @@ silent-failure rules on this page and in `collector-scripting.md`.
 - **Reserved names**: the portal refused a datapoint named `In` on import. **[portal]** Keep a
   reserved-name list in your build and add to it whenever the portal rejects one.
 - Names: **PascalCase**, matching LM suites (`CPUUsagePercent`, `MemoryUsedMB`, `DataRateRxMB`,
-  `UpTimeSeconds`, `UsedPercent`, `CapacityGB`, `Status`).
+  `UpTimeSeconds`, `UsedPercent`, `CapacityGB`, `Status`). Never rename a deployed datapoint —
+  history doesn't follow, and dashboards drop the widget.
+- **Status datapoints** — give the codes names so alerts read as words **[LM recipes]**:
+  ```json
+  "statusDisplayNames": [
+    {"statusDisplayName": "Offline", "metricValue": "0", "operator": "EQ"},
+    {"statusDisplayName": "Online",  "metricValue": "1", "operator": "EQ"}
+  ],
+  "alertBody": "Node ##INSTANCE## on ##HOST## is ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##). ..."
+  ```
+  Objects, not strings; `metricValue` is a string. Without a mapping, state it in the description.
+- Every datapoint should feed something — a graph, an alert, a dashboard. Description includes the
+  unit and, for status codes, the mapping.
+
+### Graphs and overview graphs **[LM recipes]**
+
+`graphs` (per instance) and `overviewGraphs` (one line per instance, across all instances) share
+one shape; overview datapoints add `aggregateMethod` (`sum` for counts, `average` for comparable
+measures, `min`/`max` for bounds) and set `"aggregated": false` to keep a line per instance with
+`legend` `##INSTANCE##`:
+
+```json
+{"name": "CPU by node", "title": "CPU by node", "verticalLabel": "%", "min": 0,
+ "timeScale": "1day", "displayPriority": 1, "aggregated": false, "scale1024": false, "rigid": false,
+ "lines": [{"datapointName": "CPUUsagePercent", "legend": "##INSTANCE##", "color": "blue",
+            "type": "line", "isVirtual": false}],
+ "datapoints": [{"name": "CPUUsagePercent", "datapointName": "CPUUsagePercent",
+                 "aggregateMethod": "average", "consolidationFn": "average"}]}
+```
+
+Line `type`: `line`, `stack`, `area`. `datapointName` is the short datapoint `name`, never the
+`##WILDVALUE##.` key. The Proxmox suite ships without module graphs (dashboards instead), so these
+shapes are unverified here.
 
 ## 3. Active Discovery block **[portal]**
 
@@ -102,7 +142,20 @@ silent-failure rules on this page and in `collector-scripting.md`.
 ```
 
 Never auto-delete: a collection that exits non-zero during an outage must not tear down history.
-Use a short discovery interval for fast-changing sets (VMs) and 1440m for slow ones (disks, certs).
+(LogicMonitor's own templates set `autoDeleteInstances: true`; this skill deliberately doesn't.)
+With auto-delete off, instances discovery no longer reports stay, history intact **[portal]**;
+retiring them is an operator's decision, made by hand once the object is confirmed gone and its
+history no longer needed.
+
+`discoveryInterval` takes only **`0m`** (on demand / property change only), **`15m`**, **`60m`**
+or **`1440m`** — not `"1d"` **[LM recipes]**; `lm_lint_module.py` errors on anything else. Use 15m
+for fast-changing sets (VMs), 1440m for slow ones (disks, certs). AD also re-runs when a resource or
+its properties change, and on demand from the resource tree.
+
+Instances an operator shouldn't monitor are best excluded by AD `filters` keyed on instance
+properties discovery emits (`auto.*`), with `groupMethod` set to group by one of them. Ship
+`"filters": []` / `"groupMethod": "none"` and document in `technicalNotes` which properties operators
+can filter on. All filters must match (AND) — when instances go missing, check the filters first.
 
 ## 4. PropertySource **[LM export, portal]**
 

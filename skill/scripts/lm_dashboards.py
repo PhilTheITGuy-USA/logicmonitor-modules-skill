@@ -24,7 +24,9 @@ As a CLI -- validate any dashboard JSON (hand-written, generated, or exported):
 --modules accepts LogicModule export JSON files, directories of them, or a JSON list of
 {"name", "displayedAs", "datapoints": [names or {"name": ...}]}. With it, every widget's
 "<displayedAs> (<name>)" reference and datapoint name is resolved; without it, only the
-schema/vocabulary/grid checks run. Exit 1 on any problem.
+schema/vocabulary/grid checks run. Exit 1 on any problem. Widget types and values that only
+LM's monitoring-recipes corpus vouches for (gauge, pieChart, text, deviceSLA, gmap; extra
+themes; colorBar columns) print as WARN and do not fail the check.
 
 A dashboard is a different resource from a LogicModule: it is imported through
 Dashboards > Add > From File rather than My Module Toolbox.
@@ -87,6 +89,47 @@ REFERENCE_KEYS: dict[str, set[str]] = {
         "timescale", "type", "version",
     },
 }
+
+# A second tier: values and widget types that appear in LogicMonitor's monitoring-recipes
+# dashboard skill (schema and templates built from LM's own export corpus,
+# github.com/logicmonitor/monitoring-recipes @ a7b45b6) but were never imported and
+# re-exported by this project. check_dashboard reports them as WARNINGS, not errors:
+# better evidence than an invention, weaker than an import. Promote a value into the
+# tuples above only after a portal keeps it.
+UNVERIFIED_KEYS: dict[str, set[str]] = {
+    "gauge": {
+        "colorThresholds", "dataPoint", "description", "displaySettings", "displayType",
+        "displayUnit", "interval", "legend", "maxValue", "minValue", "name",
+        "peakTimeRange", "showPeak", "theme", "timescale", "type", "version",
+    },
+    "pieChart": {
+        "description", "displaySettings", "interval", "name", "pieChartInfo", "theme",
+        "timescale", "type", "version",
+    },
+    "text": {
+        "content", "description", "displaySettings", "interval", "name", "theme",
+        "timescale", "type", "version",
+    },
+    "deviceSLA": {
+        "bottomLabel", "calculationMethod", "colorThresholds", "daysInWeek", "description",
+        "displayPercentageBar", "displaySettings", "displayType", "interval", "metrics",
+        "name", "periodInOneDay", "theme", "timescale", "timezone", "topX", "type",
+        "unmonitoredTimeType", "version",
+    },
+    "gmap": {
+        "ackChecked", "description", "displayCriticalAlert", "displayErrorAlert",
+        "displaySettings", "displayWarnAlert", "interval", "mapPoints", "name",
+        "sdtChecked", "theme", "timescale", "type", "version",
+    },
+}
+UNVERIFIED_THEMES = (
+    "borderPurple", "borderGray", "borderBlue", "solidPurple", "solidGray", "solidBlue",
+    "simplePurple", "simpleBlue", "simpleGray", "newBorderGray", "newBorderBlue",
+    "newSolidGray", "newSolidBlue", "newSimpleGray", "newSimpleBlue", "newSimpleDarkBlue",
+)
+UNVERIFIED_DISPLAY_TYPES = ("column",)
+UNVERIFIED_COLUMN_DISPLAY_TYPES = ("colorBar",)
+UNVERIFIED_TABLE_TOP_X = (10,)
 
 # Enum vocabularies observed in the reference exports. Anything outside these is an
 # invention, and inventions are what fail to import.
@@ -427,16 +470,21 @@ class Dashboard:
 # ------------------------------------------------------------------- validation
 
 def check_dashboard(label: str, dashboard: dict,
-                    modules: dict[str, set[str]] | None) -> list[str]:
+                    modules: dict[str, set[str]] | None,
+                    warnings: list[str] | None = None) -> list[str]:
     """
     Cross-check a rendered dashboard against the module definitions and the reference
     schema. `modules` maps "<displayedAs> (<name>)" to that module's datapoint names.
+    Returns the problems; values only the monitoring-recipes corpus vouches for are
+    appended to `warnings` when a list is passed (and dropped otherwise).
 
     The expensive failure this guards against is a module or datapoint rename: the
     dashboard keeps importing, the widgets keep rendering, and every one of them is
     empty. Nothing in the portal reports it.
     """
     problems: list[str] = []
+    if warnings is None:
+        warnings = []
     references: list[tuple[str, str, str]] = []
 
     description = dashboard.get("description", "")
@@ -453,16 +501,26 @@ def check_dashboard(label: str, dashboard: dict,
         kind = config.get("type")
         name = config.get("name", "<unnamed>")
 
-        if kind not in REFERENCE_KEYS:
+        if kind in UNVERIFIED_KEYS:
+            warnings.append(f"{label}: {name!r} is a {kind} widget -- its shape comes from "
+                            f"LM's monitoring-recipes templates and has not been import-"
+                            f"tested here; count widgets after import")
+            expected = UNVERIFIED_KEYS[kind]
+        elif kind in REFERENCE_KEYS:
+            expected = REFERENCE_KEYS[kind]
+        else:
             problems.append(f"{label}: {name!r} has widget type {kind!r}, which appears "
                             f"in no reference export")
             continue
-        if set(config) != REFERENCE_KEYS[kind]:
-            extra = sorted(set(config) - REFERENCE_KEYS[kind])
-            missing = sorted(REFERENCE_KEYS[kind] - set(config))
+        if set(config) != expected:
+            extra = sorted(set(config) - expected)
+            missing = sorted(expected - set(config))
             problems.append(f"{label}: {name!r} ({kind}) key set differs from the "
                             f"reference export -- extra={extra} missing={missing}")
-        if config.get("theme") not in THEMES:
+        if config.get("theme") in UNVERIFIED_THEMES:
+            warnings.append(f"{label}: {name!r} theme {config.get('theme')!r} appears in LM's "
+                            f"export corpus but not in an import tested here")
+        elif config.get("theme") not in THEMES:
             problems.append(f"{label}: {name!r} theme {config.get('theme')!r} is not one "
                             f"the reference exports use")
         if config.get("timescale") not in TIMESCALES:
@@ -470,7 +528,7 @@ def check_dashboard(label: str, dashboard: dict,
                             f"not one the reference exports use")
 
         try:
-            problems.extend(_check_kind(label, name, kind, config, references))
+            problems.extend(_check_kind(label, name, kind, config, references, warnings))
         except (KeyError, TypeError) as exc:
             problems.append(f"{label}: {name!r} ({kind}) is missing a field the reference "
                             f"export carries: {exc}")
@@ -497,7 +555,7 @@ def check_dashboard(label: str, dashboard: dict,
 
 
 def _check_kind(label: str, name: str, kind: str, config: dict,
-                references: list) -> list[str]:
+                references: list, warnings: list[str]) -> list[str]:
     """Per-type checks; appends (module ref, datapoint, widget) tuples to references."""
     problems: list[str] = []
     if kind == "cgraph":
@@ -508,26 +566,67 @@ def _check_kind(label: str, name: str, kind: str, config: dict,
         for series in config["graphInfo"]["dataPoints"]:
             references.append((series["dataSourceFullName"],
                                series["dataPointName"], name))
-            if series["display"]["type"] not in DISPLAY_TYPES:
-                problems.append(f"{label}: {name!r} display type "
-                                f"{series['display']['type']!r} is not one the "
+            shown = series["display"]["type"]
+            if shown in UNVERIFIED_DISPLAY_TYPES:
+                warnings.append(f"{label}: {name!r} display type {shown!r} appears in LM's "
+                                f"export corpus but not in an import tested here")
+            elif shown not in DISPLAY_TYPES:
+                problems.append(f"{label}: {name!r} display type {shown!r} is not one the "
                                 f"reference exports use")
+            # Scope fields on a cgraph are glob objects; plain strings are the bigNumber /
+            # table form. [LM recipes]
+            for scope in ("instanceName", "deviceDisplayName", "deviceGroupFullPath"):
+                if scope in series and not isinstance(series[scope], dict):
+                    problems.append(f"{label}: {name!r} cgraph {scope} is "
+                                    f"{series[scope]!r}; a cgraph takes "
+                                    f'{{"isGlob": true, "value": ...}}')
     elif kind == "dynamicTable":
-        if config["topX"] not in TABLE_TOP_X:
+        if config["topX"] in UNVERIFIED_TABLE_TOP_X:
+            warnings.append(f"{label}: {name!r} table topX {config['topX']!r} appears in LM's "
+                            f"templates but not in an import tested here")
+        elif config["topX"] not in TABLE_TOP_X:
             problems.append(f"{label}: {name!r} table topX {config['topX']!r} is "
                             f"not one the reference exports use {TABLE_TOP_X}")
+        for row in config["rows"]:
+            if "groupFullPath" not in row:
+                problems.append(f"{label}: {name!r} table row scopes its group with "
+                                f"{sorted(row)}; dynamicTable rows use groupFullPath "
+                                f"(not deviceGroupFullPath)")
         for column in config["columns"]:
             references.append((config["dataSourceFullName"],
                                column["dataPointName"], name))
-            problems.extend(_check_column(label, name, column))
+            problems.extend(_check_column(label, name, column, warnings))
     elif kind == "bigNumber":
         for series in config["bigNumberInfo"]["dataPoints"]:
+            references.append((series["dataSourceFullName"],
+                               series["dataPointName"], name))
+    elif kind == "noc":
+        for item in config["items"]:
+            if "dataSourceFullName" in item or "dataSourceDisplayName" not in item:
+                problems.append(f"{label}: {name!r} noc items name their module with "
+                                f"dataSourceDisplayName (a display-name glob), never "
+                                f"dataSourceFullName")
+    elif kind == "alert":
+        settings = config["displaySettings"]
+        # Both of these import cleanly and then break the widget at render. [LM recipes]
+        if not isinstance(settings.get("sort", ""), str):
+            problems.append(f"{label}: {name!r} alert displaySettings.sort must be a string "
+                            f"such as '-startEpoch'; an object imports and then crashes "
+                            f"the widget at render")
+        if "playSound" in settings and not isinstance(settings["playSound"], dict):
+            problems.append(f"{label}: {name!r} alert displaySettings.playSound must be an "
+                            f"object, not {settings['playSound']!r}")
+    elif kind == "gauge":
+        point = config["dataPoint"]
+        references.append((point["dataSourceFullName"], point["dataPointName"], name))
+    elif kind == "pieChart":
+        for series in config["pieChartInfo"]["dataPoints"]:
             references.append((series["dataSourceFullName"],
                                series["dataPointName"], name))
     return problems
 
 
-def _check_column(label: str, widget: str, column: dict) -> list[str]:
+def _check_column(label: str, widget: str, column: dict, warnings: list[str]) -> list[str]:
     """
     A dynamicTable column, against the reference exports field by field.
 
@@ -538,7 +637,10 @@ def _check_column(label: str, widget: str, column: dict) -> list[str]:
     """
     problems: list[str] = []
     where = f"{label}: {widget!r} column {column['columnName']!r}"
-    if column["displayType"] not in COLUMN_DISPLAY_TYPES:
+    if column["displayType"] in UNVERIFIED_COLUMN_DISPLAY_TYPES:
+        warnings.append(f"{where} has displayType {column['displayType']!r}, which appears "
+                        f"in LM's export corpus but not in an import tested here")
+    elif column["displayType"] not in COLUMN_DISPLAY_TYPES:
         problems.append(f"{where} has displayType {column['displayType']!r}, which "
                         f"appears in no reference export {COLUMN_DISPLAY_TYPES}")
     if not isinstance(column["colorThresholds"], list):
@@ -614,7 +716,8 @@ def main(argv: list[str] | None = None) -> int:
     failed = False
     for raw in args.dashboards:
         dashboard = json.loads(Path(raw).read_text(encoding="utf-8"))
-        problems = check_dashboard(Path(raw).name, dashboard, index)
+        warnings: list[str] = []
+        problems = check_dashboard(Path(raw).name, dashboard, index, warnings)
         widgets = len(dashboard.get("widgets", []))
         if problems:
             failed = True
@@ -623,8 +726,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  - {problem}")
         else:
             scope = "schema + references" if index is not None else "schema only"
-            print(f"OK    {raw}  ({widgets} widgets, {scope}). After import, count "
-                  f"{widgets} widgets in the portal -- dropped ones leave no gap.")
+            print(f"{'WARN' if warnings else 'OK  '}  {raw}  ({widgets} widgets, {scope}). "
+                  f"After import, count {widgets} widgets in the portal -- dropped ones "
+                  f"leave no gap.")
+        for warning in warnings:
+            print(f"  WARN  {warning}")
     return 1 if failed else 0
 
 

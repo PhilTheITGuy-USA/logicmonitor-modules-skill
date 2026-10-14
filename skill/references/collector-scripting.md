@@ -1,7 +1,9 @@
 # Collector Groovy scripting contract
 
 Provenance tags: **[portal]** confirmed in a real portal/Collector; **[LM export]** read from
-LogicMonitor's published modules or repos; **[inferred]** reasoned, not yet observed.
+LogicMonitor's published modules or repos; **[LM recipes]** stated in LogicMonitor's
+`monitoring-recipes` guidance (github.com/logicmonitor/monitoring-recipes @ `a7b45b6`, Apache-2.0)
+but not yet observed here; **[inferred]** reasoned, not yet observed.
 
 ## Contents
 1. Runtime
@@ -14,6 +16,11 @@ LogicMonitor's published modules or repos; **[inferred]** reasoned, not yet obse
 8. PropertySource output
 9. Topology and ERI via `lm.topo` snippets
 10. Sharing code between modules
+11. Collector snippets: when and how
+12. ScriptCache: tokens between polls
+
+PowerShell scripts: `powershell.md`. Module types other than DataSource / PropertySource /
+TopologySource: `other-module-types.md`.
 
 ## 1. Runtime
 
@@ -32,6 +39,12 @@ LogicMonitor's published modules or repos; **[inferred]** reasoned, not yet obse
 | `hostProps` | resource-level properties (`system.hostname`, custom props, `*.credential`) | AD, collection, PropertySource |
 | `taskProps` | instance-level properties during per-instance collection | Script collection only |
 | `instanceProps` | instance properties in some contexts | varies |
+| `datasourceinstanceProps` | every discovered instance of this module on the resource, keyed by instance, each with `.wildvalue` **[LM recipes]** | BatchScript collection |
+| `alertProps` | the triggering alert (`alert.datapoint`, `alert.instance.wildvalue`, …) **[LM recipes]** | Diagnostic / RemediationSource, alert-triggered runs only |
+
+`datasourceinstanceProps` lets a BatchScript loop over exactly the instances discovery produced —
+`datasourceinstanceProps.each { inst, props -> def wv = props.wildvalue ... }` — instead of
+re-deriving them from the API. Useful when the API needs a call per instance anyway.
 
 - Instance properties set by Active Discovery may appear **with or without the `auto.` prefix**. Read
   them through one helper that tries `taskProps[key]`, `taskProps['auto.'+key]`,
@@ -77,7 +90,14 @@ try {
 - **Fan-out over sub-objects** (one call per node/host): filter to reachable ones first, then a
   per-item `try` that logs to `System.err` and continues, so one dead member doesn't blank the rest.
 - A fourth legitimate shape: **nothing to report** (feature not installed) → print nothing,
-  `return 0`, and say so on stderr for AD.
+  `return 0`, and say so on stderr for AD. **Only safe for AD with auto-delete off.** LogicMonitor
+  states that an AD script exiting 0 with empty output removes every previously discovered instance
+  **[LM recipes]** — that is the auto-delete behaviour. With `autoDeleteInstances: false` the
+  instances and their history stay **[portal]**, until an operator confirms they're retired and
+  their history is no longer needed and deletes them by hand. That is the intended lifecycle: never
+  let discovery retire instances on its own. When "empty" could be a transient error (a
+  permissions-filtered list, a half-up API), still exit non-zero, so the log shows a failure rather
+  than "nothing found".
 
 ## 4. Active Discovery output
 
@@ -93,7 +113,14 @@ wildvalue##displayName##description####auto.key=value&auto.key2=value2
 - **Display name / description** may contain spaces and punctuation; strip `#`.
 - **Property values**: URL-encode (`URLEncoder.encode(v, 'UTF-8')`) — LM's own reference AD scripts do
   this. **Never emit a blank value** — it logs an error on the discovery task. Prefix keys `auto.`.
-- All instance properties on one resource share a **~49,000-character budget**.
+- All instance properties on one resource share a **~49,000-character budget**. Limits **[LM
+  recipes]**: wildvalue ≤ 1024 chars, display name ≤ 255.
+- Do put stable discovery metadata (type, role, version, feature flags) on the instance as
+  `auto.*` properties: AD filters and "group by instance property" key on them. Never put metrics
+  there — they belong in datapoints.
+- With the `lm.emit` snippet (§11), `emit.instance(wv, name[, description][, [key: value]])`
+  writes this line for you, adds `auto.` to bare keys and folds the wildvalue itself. If AD uses
+  `emit.instance`, collection must use `emit.dp` (or the identical fold) — see §5.
 - An under-privileged credential against a "filtered by permission" endpoint returns an empty list,
   not an error. Detect "returned nothing" and say on stderr that it may be permissions.
 - Filter out things that can never be healthy (templates, disabled placeholders) at discovery, not
@@ -117,6 +144,16 @@ Test Collection Script showed correct output.
   collects for an undiscovered id.
 - Prefer BatchScript whenever one call returns every instance. Per-instance Script multiplies API
   calls by instance count.
+- **Mixed folds break silently.** `lm.emit` folds `# \ : =` and spaces in a wildvalue to `_`
+  **[LM recipes]**; a hand-written fold may differ (e.g. ours also folds `.`). If discovery and
+  collection fold differently, every datapoint reads No Data. One fold, used on both sides.
+- BatchScript may instead print JSON — `{"data": {"<wv>": {"values": {"Name": 1}}}}` — read with
+  the JSON post-processor and `interpretExpr` `data.##WILDVALUE##.values.Name` **[LM recipes]**.
+  `lm_lint_module.py` understands only `namevalue`; prefer it.
+- Batchscript has its own timeout, `collector.batchscript.timeout` in `agent.conf`. Budget long
+  scripts against it: `Settings.getSettingInt("collector.batchscript.timeout",
+  Settings.getSettingInt("collector.script.timeout", 120)) * 1000 - 2500`
+  (`import com.santaba.agent.util.Settings`) **[LM recipes]**.
 
 ## 6. Values and metric types
 
@@ -125,32 +162,61 @@ Test Collection Script showed correct output.
 - Cumulative counters from the source (bytes since boot/start) → datapoint `type: derive` with
   `min: 0` so a counter reset is dropped rather than graphing a negative spike. Point-in-time
   readings → `gauge`. Declaring a counter as gauge graphs an ever-climbing line.
-- LM renders large raw numbers in E-notation on dashboards (`5.001E11`). Emit capacity in GB and
-  rates in MB (decide decimal vs binary once and say so in the description).
-- Round to a sane precision (`Math.round(v * 100) / 100`).
+- **Units — two defensible choices; pick one per suite and write it down.**
+  - *Canonical units* (bytes, bytes/s, seconds), unrounded — LogicMonitor's own guidance **[LM
+    recipes]**. Keeps full precision and lets graphs auto-scale; but a dashboard table or big
+    number can render a raw byte count in E-notation (`5.001E11`) **[portal]** unless the widget
+    scales it.
+  - *Display units* (GB, MB/s), rounded (`Math.round(v * 100) / 100`) — what the Proxmox suite
+    does **[portal]**. Reads well everywhere with no widget work; loses precision and auto-scaling,
+    and a graph of TB-scale data shows `124.5K` GB **[LM recipes]**.
+  - Either way the datapoint name carries the unit (`CapacityGB`, `UsedBytes`) and the description
+    states it, decimal vs binary included. Fixing display on the dashboard side (an RPN multiply in
+    the widget) is in `dashboards.md`.
+  - Never change a deployed datapoint's unit in place: history mixes both. Add a new datapoint.
 
 ## 7. HTTP, TLS, auth
 
-- LM's reference modules use `com.santaba.agent.groovyapi.http.HTTP` (`HTTP.open(host, port)`,
-  `.get(url)`, `.getStatusCode()`, `.getResponseBody()`, `.close()`). It is **Collector-only**:
-  scripts using it cannot compile or run anywhere else. Plain `HttpURLConnection` keeps scripts
-  testable off-Collector and gives per-request timeout and TLS control. Choose deliberately and
-  document the choice; for Exchange either is acceptable **[inferred]**.
+- Three clients; choose deliberately and record the choice in `technicalNotes`:
+  - **Plain `HttpURLConnection`** — testable off-Collector against a mock API (the Proxmox suite's
+    harness), per-request timeout and TLS control. **Ignores the Collector's proxy settings**: a
+    Collector that reaches the internet only through a proxy can't reach a SaaS API this way.
+    Default for an on-prem REST target where local testing matters.
+  - **`proto.http` snippet** (§11) — honours the resource's and the Collector's `proxy.enable`
+    and `proxy.exclude` **[LM recipes]**. LogicMonitor's recommended client; use it for SaaS/
+    cloud targets or whenever a proxy may sit in the path. Collector-only.
+  - `com.santaba.agent.groovyapi.http.HTTP` (`HTTP.open(host, port)`, `.get(url)`,
+    `.getStatusCode()`, `.getResponseBody()`, `.close()`) — older LM reference modules
+    **[LM export]**. Collector-only and no proxy story; don't start new work on it.
 - Set connect and read timeouts from a property with a default (e.g. 10000 ms).
 - Call out 401/403 distinctly in the error — "credential rejected / missing ACL" is the most common
   misconfiguration and otherwise looks like an empty result.
 - A TLS bypass for self-signed lab targets must be **opt-in via a property and default off**.
 - Use `groovy.json.JsonSlurper` to parse; unwrap any response envelope in one helper.
+- Session tokens that outlive a poll: cache them (§12) rather than logging in every interval. On a
+  401 with a cached token, drop it, re-authenticate and retry **once** — never loop on an auth
+  failure **[LM recipes]**.
 
 ## 8. PropertySource output
 
 - Prints `key=value` lines; each becomes a resource property. `system.categories=Foo` *adds* a
   category (this is how a suite becomes self-applying).
+- **Every property a PropertySource creates is stored as `auto.<key>`** — a printed
+  `pve.version=8.2.2` lands on the resource as `auto.pve.version` **[portal, LM docs]**. The one
+  exception is `system.categories`; no other `system.*` property can be set **[LM docs]**. So
+  AppliesTo expressions, other modules and install docs must say `auto.pve.version`, never the
+  bare name — a bare reference matches nothing, silently. Printing the prefix yourself
+  (`auto.vendor.version=…`) is what LM's own recipes do and makes the script read like the result
+  **[LM recipes]**. `lm_lint_module.py` notes each bare key with the name it will get, and warns on
+  any other `system.*` key.
 - A PropertySource on `AppliesTo: true()` must **return 0 and print nothing** when the host isn't the
   target or credentials are missing — on every error path too. Use the cheapest authenticated
   endpoint that proves identity (a `/version`-style call).
-- Publish facts other modules' AppliesTo can key on (e.g. `vendor.version`, `vendor.clustered`) so
-  they don't need their own probe.
+- Publish facts other modules' AppliesTo can key on (e.g. `auto.vendor.version`,
+  `auto.vendor.clustered`) so they don't need their own probe.
+- A PropertySource that sets **only** a category can add `&& !hasCategory("Foo")` to its
+  AppliesTo so it stops re-running once applied; don't, if it also maintains other properties
+  **[LM recipes]**.
 
 ## 9. Topology and ERI via `lm.topo` snippets
 
@@ -171,13 +237,28 @@ def keyBlacklist = (hostProps.get('topo.blacklist') ?: '').tokenize(',')
 def eri = { List keys -> lmTopo.eriPreProcessor(keys, lmTopoData.blockedKeys, keyNamespace, keyBlacklist) }
 ```
 
-TopologySource:
+TopologySource — **two documented call shapes; start from LM's catalog form**:
+
 ```groovy
+// LM's snippet catalog form [LM recipes] -- the general starting point:
 def edges = []
+lmTopo.registerEdge(edges, fromEri, toEri, 'dependsOn')
+print lmTopo.generateTopology(edges, 'myNamespace', [], false)
+
+// The form the Proxmox suite ships, inside LM's ERI-namespace/blacklist plumbing [portal]:
 lmTopo.registerEdge('Compute', parentEri, childEri, edges)   // edge type e.g. 'Cluster', 'Compute'
-println lmTopo.generateTopology(edges, keyNamespace, keyBlacklist, null, false)
+println lmTopo.generateTopology(edges, keyNamespace, keyBlacklist, null, debug)
 ```
-`lmTopo.isMac(mac, lmTopoData.blockedKeys, false)` validates a MAC before using it as a key.
+
+Argument order is a property of the `lm.topo` snippet, not of the target API, so these are either
+two overloads or one source is wrong; the Proxmox form is the only one observed working here. The
+catalog also documents extended `registerEdge` overloads (display type, instances, health). Whichever
+you use, confirm with **Test Script** on the TopologySource that edges come out before trusting the
+map. `lmTopo.isMac(mac, lmTopoData.blockedKeys, false)` validates a MAC before using it as a key.
+
+The raw output those helpers produce is `{"edges": [{"type", "from", "to"}]}` keyed by ERI (plus
+vertices from `generateTopology`) **[LM recipes]** — still don't hand-write it; the helpers apply
+namespace and blacklist rules a hand-built payload skips.
 
 ERI PropertySource:
 ```groovy
@@ -212,3 +293,94 @@ and exclude the snippet-dependent scripts from local compile/test.
   both emit the same wildvalue so a module can switch between them without orphaning instances.
 - Split modules by alert posture and interval (capacity vs performance vs status), as LM's VMware
   suite does — not one fat module.
+
+## 11. Collector snippets: when and how
+
+Snippets are LogicMonitor-maintained Groovy libraries the Collector downloads from the portal and
+loads at run time **[LM recipes]**. Customers can't write or deploy their own.
+
+**When to use them.** Two styles are both legitimate; choose per suite and record it:
+
+| Style | Use for | Cost |
+|---|---|---|
+| **Self-contained Groovy** (plain `HttpURLConnection`, own `println`) | REST-API suites where a local mock-API harness matters (the Proxmox suite) | No proxy support; you own retries, folding and output formatting |
+| **Snippet-first** (`lm.emit`, `proto.http`, `proto.snmp`, `lm.remote`, `lm.sql`) | SNMP, SSH, JDBC; SaaS/cloud APIs; any Collector behind a proxy | Scripts can't run off-Collector — keep target logic in plain helpers you can test, and keep the snippet calls thin |
+
+`lm.topo` (§9) is effectively mandatory for topology and ERI either way.
+
+**Prerequisites**: the `LogicMonitor_Collector_Snippets` module installed, and monitoring enabled
+on the **Collector's own resource**. A missing prerequisite shows as `Unable to load Snippet -
+<name>`, or exit 0 with no output.
+
+**Bootstrap — bind it or get silent nothing:**
+
+```groovy
+import com.santaba.agent.groovy.utils.GroovyScriptHelper as GSH
+import com.logicmonitor.mod.Snippets
+
+def modLoader = GSH.getInstance(GroovySystem.version)
+    .getScript('Snippets', Snippets.getLoader())
+    .withBinding(getBinding())          // without this, emit.dp() exits 0 and prints nothing
+def emit = modLoader.load('lm.emit', '0')
+```
+
+A loaded snippet runs as a separate script object; without the parent binding its output never
+reaches the Collector — exit 0, empty output, no error **[LM recipes]**. `lm_lint_module.py`
+errors on a `Snippets.getLoader()` without `.withBinding(...)`.
+
+- **Version pins** are a *minimum within the same major*: `load('lm.emit', '0')` = latest 0.x;
+  `load('lm.remote', '0.7.1')` = latest 0.x ≥ 0.7.1; `'-1'` = latest active **[LM recipes]**.
+- **Helpers don't see locals.** A top-level `def helper() {}` is a method on the script class, so it
+  can't see `def emit` — `MissingPropertyException: No such property: emit`. Pass the handle in as a
+  parameter.
+- Don't call `clearCacheForUpdate()` from a module; it is an operator action.
+
+**Main snippets** (min versions per LM's catalog **[LM recipes]**):
+
+| Snippet | Use | Entry point |
+|---|---|---|
+| `lm.emit` | Collector-parseable output | `emit.dp(name, v)` / `emit.dp(wv, name, v)` / `emit.instance(wv, name[, desc][, props])` / `emit.property(key, v)` / `emit.events(list)`. Booleans → `1.0`/`0.0`; wildvalues folded (§5) |
+| `proto.http` `1.0.0` | Proxy-aware HTTP | `.create(hostProps).withHeaders([...]).GET(url, connectMs, readMs)` → `conn.responseCode`, `conn.inputStream.text`. Honours `proxy.enable` / `proxy.exclude` on the resource and the Collector |
+| `proto.snmp` `0.2.0` | SNMP get/walk with retries and a time budget | `.create(host, lowercasedProps, startMs).withRetries(n).walk(oid)` → map index → value; `.get(oid)` |
+| `lm.remote` `0.7.1` | SSH (SSHJ) | `.exec(hostProps, cmd)`; `.create(hostProps).exec(cmd)`; `.sftp` / `.scp` / `.shell`. Reads `ssh.user` / `ssh.pass` (fallback `config.user` / `config.pass`), `ssh.cert`, `ssh.port` |
+| `lm.sql` `0.1.0` | JDBC | `.attemptConnection(user, pass, url)` → `.status` `success`/`failed`; `.runQuery(sql, conn)` → `success` / `no data` / `failed` |
+| `lm.cache` `0.3.1` | ScriptCache wrapper (§12) | `.cacheSnippetFactory(debugAdapter, keySuffix)` → `cacheGet` / `cacheSet(key, v, expirySeconds)` |
+| `lm.debug` `2.0.0` | Diagnostics routed by `debug.log*` resource properties | `.create(hostProps, debug, out)` → `.debug/.info/.warn/.error` |
+| `lm.topo` | Topology / ERI (§9) | `registerEdge`, `generateTopology`, `emitEri` |
+
+SNMP props are case-sensitive in the snippet's eyes: pass
+`hostProps.toProperties().collectEntries { k, v -> [(k.toLowerCase()): v] }`.
+
+LM's own credential property names (`ssh.pass`, `wmi.pass`, `jdbc.pass`, `snmp.authToken`, …) are
+read by these snippets, so modules that use them keep those names rather than `*.credential`;
+`lm_lint_module.py` allows them. That the portal masks them is **[inferred]**.
+
+LogicMonitor's own recipe scripts are starting points, not finished modules: e.g. their HTTP recipe
+emits every response field including strings (No Data, rule 4) and reads `api.token` (unmasked,
+rule 6). Apply the rules in `SKILL.md` to anything you copy.
+
+## 12. ScriptCache: tokens between polls
+
+Collector **29.100+** keeps an in-memory key/value cache across runs **[LM recipes]**:
+
+```groovy
+def cache = this.class.classLoader
+    .loadClass('com.santaba.agent.util.script.ScriptCache').getCache()
+String key = "vendor.session.${hostProps.get('system.hostname')}"   // scope the key!
+String token = cache.get(key)
+if (token == null) {
+    token = login()
+    cache.set(key, token, 25 * 60 * 1000L)                          // expireIn: MILLISECONDS
+}
+```
+
+- `set(key, value[, expireInMs])`, `get(key)` (null when missing/expired), `remove(key)`. Default TTL
+  `collector.script.cache.timeout` in `agent.conf`, in **minutes**. The `lm.cache` snippet's
+  `cacheSet` takes **seconds** — don't mix them up.
+- **Scope every key by target (and module).** The cache is shared by every script on the Collector
+  **[inferred from "reuse across modules"]**; LM's HTTP recipe caches under the fixed key
+  `authToken`, which would hand one device's token to another.
+- Set the expiry below the token's real lifetime (its `expires_in` minus a margin); on a 401 drop the
+  key, re-authenticate, retry once.
+- Collectors older than 29.100 can't load the class: wrap the load in `try` and fall back to logging
+  in each poll. Don't cache secrets you wouldn't want resident in Collector memory.

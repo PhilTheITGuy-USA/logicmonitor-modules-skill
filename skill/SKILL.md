@@ -1,6 +1,6 @@
 ---
 name: logicmonitor-modules
-description: Build, fix, test and publish LogicMonitor LogicModules — DataSources, PropertySources (including ERI), TopologySources and dashboards — as Groovy scripts plus importable module JSON, to a standard fit for the LM Exchange / LogicMonitor Community. Use this whenever the user is writing or debugging Collector Groovy (Active Discovery, Script or BatchScript collection), editing module or dashboard JSON, choosing datapoint types or thresholds, wiring AppliesTo / categories / PropertySources, calling or authenticating to the LogicMonitor REST API (v3, LMv1 HMAC signing and its 401 errors, bearer tokens, Logic.Monitor PowerShell), importing modules into a portal, or diagnosing "instances discovered but every datapoint No Data", widgets missing after a dashboard import, or a module that silently stopped applying — even if they only say "LM", "santaba", "collector script", "wildvalue" or name a monitored product (Proxmox, VMware, a REST API) they want to monitor.
+description: Build, fix, test and publish LogicMonitor LogicModules — DataSources, PropertySources (incl. ERI), TopologySources, LogSources, EventSources, ConfigSources, Diagnostic/RemediationSources and dashboards — in Groovy or PowerShell with importable JSON, to LM Exchange / Community standard. Use this whenever the user is writing or debugging Collector scripts (Active Discovery, Script or BatchScript collection, lm.emit/proto.http snippets), editing module or dashboard JSON, choosing datapoints or thresholds, wiring AppliesTo / categories / PropertySources, calling or authenticating to the LogicMonitor REST API (v3, LMv1 HMAC signing and its 401 errors, bearer tokens, Logic.Monitor PowerShell), importing into a portal, or diagnosing "instances discovered but every datapoint No Data", widgets missing after a dashboard import, or a module that silently stopped applying — even if they only say "LM", "santaba", "collector script", "wildvalue" or name a product (Proxmox, VMware, a REST API) to monitor.
 ---
 
 # Building LogicMonitor modules
@@ -11,10 +11,12 @@ naming them, or the suite stops applying with no error. So the job is mostly abo
 list of contracts exactly right and building local checks for the ones the portal won't report.
 
 This skill was distilled from building a 17-module Proxmox VE suite to Exchange standard
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule). Every claim in the references is marked by how it
-was established — **portal-confirmed**, **from LM's published exports**, or **inferred**. Keep that
-distinction when you report your own work: a green local test is not a portal import, and a portal
-import is not a working live target.
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule), then extended with LogicMonitor's own authoring
+guidance (github.com/logicmonitor/monitoring-recipes). Every claim in the references is marked by
+how it was established — **portal-confirmed**, **from LM's published exports**, **[LM recipes]**
+(LogicMonitor's guidance, not yet observed here), or **inferred**. Where LM's recipes and a portal
+disagree, the portal wins. Keep that distinction when you report your own work: a green local test
+is not a portal import, and a portal import is not a working live target.
 
 ## The rules that fail silently
 
@@ -45,6 +47,8 @@ Read these before writing any module. Each one shipped broken at least once.
 7. **A PropertySource with `AppliesTo: true()` must be completely silent** (exit 0, no output) on any
    host that isn't the target or lacks credentials. It runs on every resource in the portal; if it
    ever prints a category on the wrong host, the whole suite applies itself to unrelated machines.
+   Every other property it prints is stored as **`auto.<key>`** (`pve.version` → `auto.pve.version`):
+   reference it by that name, or the AppliesTo that keys on it matches nothing.
 8. **Copy formats from LogicMonitor's own exports — keys, value types and value vocabularies.** An
    unexpected key, a string where an integer belongs, or an enum value LM's exports never use is
    dropped at import, often without naming what was dropped. Never invent a field or a value.
@@ -61,24 +65,32 @@ module or dashboard JSON you write, edit or are asked to debug, and report what 
 
 - **`scripts/lm_lint_module.py <file.json|dir> ...`** — lints DataSource, PropertySource (plain and
   ERI) and TopologySource JSON for the silent failures above: batchscript keys missing
-  `##WILDVALUE##.`, `useWildValueAsUniqueIdentifier` off, auto-delete on, secrets not ending
-  `.credential`, reserved datapoint names, catch blocks returning 0, a `true()` PropertySource that
+  `##WILDVALUE##.`, `useWildValueAsUniqueIdentifier` off, auto-delete on, a `discoveryInterval`
+  the portal doesn't take, secrets not ending `.credential`, snippets loaded without the script's
+  binding, reserved datapoint names, catch blocks returning 0, a `true()` PropertySource that
   can print or fail, TopologySource `collectionAttrs` as an object, REST-model JSON passed off as an
-  export, and more. `ERROR` = fix before import; `WARN` = heuristic, read and judge. Exit 1 on errors.
-  On a "No Data" report, run this first.
+  export, and more. Groovy and PowerShell both; Log/Event/Config/Diagnostic/RemediationSources get
+  the shared checks only. `ERROR` = fix before import; `WARN` = heuristic, read and judge. Exit 1 on
+  errors. On a "No Data" report, run this first.
 - **`scripts/lm_dashboards.py`** — build dashboards with it instead of hand-writing widget JSON. Its
   `Dashboard` class (`graph`, `table`, `numbers`, `alert_status`, `alert_table`, plus `series` /
   `column` / `module_ref`) emits only key sets and values copied from LM's published exports; usage
   is in the file's docstring (`sys.path.insert` the scripts dir, then import). Validate any
   dashboard — generated, hand-written or a portal export — with
   `python lm_dashboards.py check <dashboard.json> --modules <module JSONs or dir>`, which also
-  resolves every `"<displayedAs> (<name>)"` reference and datapoint and checks the grid.
+  resolves every `"<displayedAs> (<name>)"` reference and datapoint and checks the grid. Values
+  only LM's corpus vouches for (extra themes, `gauge`/`pieChart`/`text` widgets, …) pass with a
+  `WARN`: count the widgets after import.
 
 Both were mutation-tested against a 17-module suite that works in a portal: it lints with zero
 errors, and each defect class above makes the tools fail. A clean run is still not a portal import.
 
 ## Workflow for a new module or suite
 
+0. **Pick the module type** — numeric series → DataSource; logs → LogSource; alert-only events →
+   EventSource; config files → ConfigSource; properties/categories → PropertySource; relationships →
+   TopologySource; on-alert troubleshooting or fixes → Diagnostic/RemediationSource. Anything but
+   DataSource/PropertySource/TopologySource: `references/other-module-types.md`.
 1. **Find the cheapest source.** Map every metric to an API call and classify it O(1) per target,
    O(sub-objects) or O(instances). One bulk call per interval feeding a BatchScript beats a call per
    instance — at 500 instances that is 1 request instead of 500. Anything O(instances) becomes its
@@ -87,7 +99,10 @@ errors, and each defect class above makes the tools fail. A clean run is still n
    module split and datapoints. Look at `logicmonitor/dashboards` on GitHub — those exports reference
    real module and datapoint names.
 3. **Write the scripts to the Collector contract** — bindings, Active Discovery line format, output
-   format per collection method, exit codes. See `references/collector-scripting.md`.
+   format per collection method, exit codes. See `references/collector-scripting.md`. Decide
+   self-contained Groovy (testable off-Collector; the default for REST suites) vs LM's snippets
+   (`proto.http` for proxies/SaaS, `proto.snmp`, `lm.remote`, `lm.sql`) — §11 there. PowerShell
+   only for Windows-native targets: `references/powershell.md`.
 4. **Generate the module JSON from a small definition** rather than hand-editing exports; the build
    is where the cross-checks live. See `references/module-export-schema.md`. Then run
    `scripts/lm_lint_module.py` on the result.
@@ -104,9 +119,11 @@ errors, and each defect class above makes the tools fail. A clean run is still n
 
 | File | Read it when |
 |---|---|
-| `references/collector-scripting.md` | Writing any Groovy: bindings (`hostProps`, `taskProps`, `instanceProps`), AD output, Script vs BatchScript output, exit codes, HTTP/TLS, Groovy 4 migration, the `lm.topo` snippets for ERI/topology |
-| `references/module-export-schema.md` | Producing or editing module JSON: DataSource, PropertySource (plain and ERI), TopologySource shapes; datapoint `type`/`dataType` enums, thresholds, alert bodies, AD block, reserved names |
-| `references/dashboards.md` | Building or debugging a dashboard export: widget key sets, the allowed value vocabularies, `##INSTANCE##` vs `##HOSTNAME##`, why not the newer `table` widget |
+| `references/collector-scripting.md` | Writing any Groovy: bindings (`hostProps`, `taskProps`, `instanceProps`, `datasourceinstanceProps`), AD output, Script vs BatchScript output, exit codes, units, HTTP/TLS/proxy, Groovy 4 migration, `lm.topo` for ERI/topology, LM's snippets (`lm.emit`, `proto.http`, `proto.snmp`, `lm.remote`, `lm.sql`), ScriptCache for tokens |
+| `references/powershell.md` | Writing a PowerShell module: `##prop##` tokens and unset-token checks, `Write-Output` vs `Write-Host`, WMI/CIM, WinRM remoting |
+| `references/other-module-types.md` | LogSource, EventSource, ConfigSource, DiagnosticSource, RemediationSource: choosing between them, output JSON, limits, exit-code semantics, export shapes, `alertProps` |
+| `references/module-export-schema.md` | Producing or editing module JSON: DataSource, PropertySource (plain and ERI), TopologySource shapes; datapoint `type`/`dataType` enums, thresholds, alert bodies, `statusDisplayNames`, graphs/overview graphs, AD block and allowed intervals, reserved names |
+| `references/dashboards.md` | Building or debugging a dashboard export: widget key sets, the allowed value vocabularies (and the second, warn-only tier from LM's corpus), per-widget field shapes, `##INSTANCE##` vs `##HOSTNAME##`, unit scaling via RPN, why not the newer `table` widget |
 | `references/api-and-tooling.md` | Talking to a portal programmatically: REST v3, LMv1 HMAC signing, bearer tokens, module import API, the `Logic.Monitor` PowerShell module, running `!groovy` on a Collector, useful LogicMonitor GitHub repos |
 | `references/suite-design.md` | Planning a suite, cost tiers, instance-ID design, self-applying categories, topology/ERI identity, local test harness design, verification discipline, Exchange readiness checklist |
 

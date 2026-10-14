@@ -15,7 +15,9 @@ Exit 1 if any ERROR (or any WARN with --strict).
 Understands DataSources, PropertySources (plain and ERI) and TopologySources, in the
 My Module Toolbox export format. The REST API model (dataPoints / postProcessorParam /
 useWildValueAsUUID) is normalised and linted too, with a warning that it is not the
-format the Toolbox exports.
+format the Toolbox exports. ConfigSources, EventSources, LogSources, DiagnosticSources
+and RemediationSources get the shared checks (secrets, snippets, exits, discovery) only.
+Groovy and PowerShell scripts are both read; Groovy-4 checks apply to Groovy only.
 """
 
 from __future__ import annotations
@@ -33,9 +35,27 @@ RESERVED_DATAPOINT_NAMES = {"in"}
 # masked by LogicMonitor, but this is the one known to work, so the linter asks for it.
 CREDENTIAL_SUFFIX = ".credential"
 SECRET_WORDS = re.compile(r"(token|secret|pass(word)?|api[._-]?key|apikey|\.key$|private)", re.I)
+# LogicMonitor's own credential property names. LM's snippets read exactly these (lm.remote
+# reads ssh.pass, lm.sql examples read jdbc.pass), so a module that interoperates with them
+# cannot rename them to *.credential. [LM recipes; that the portal masks them is inferred]
+BUILTIN_CREDENTIAL_PROPERTIES = {
+    "ssh.pass", "ssh.cert.pass", "ssh.publickey.pass", "config.pass", "wmi.pass",
+    "jdbc.pass", "jmx.pass", "esx.pass", "snmp.authtoken", "snmp.privtoken",
+}
 PROPERTY_LITERAL = re.compile(r"""['"]([a-z][\w-]*(?:\.[\w-]+)+)['"]""")
+# PowerShell reads properties as ##name## tokens substituted before the script runs.
+PROPERTY_TOKEN = re.compile(r"##([a-z][\w-]*(?:\.[\w-]+)+)##")
+# The only Active Discovery schedules the portal takes. [LM recipes]
+DISCOVERY_INTERVALS = ("0m", "15m", "60m", "1440m")
+MODULE_TYPES = {0: "datasource", 1: "eventsource", 5: "propertysource", 6: "configsource",
+                9: "topologysource", 10: "logsource", 11: "diagnosticsource",
+                12: "remediationsource"}
+SHARED_CHECKS_ONLY = ("eventsource", "configsource", "logsource", "diagnosticsource",
+                      "remediationsource")
 PRINTED_NAME = re.compile(r"""['"]\.?([A-Z][A-Za-z0-9_]*)=['"]""")
 EMIT_CALL = re.compile(r"""\w+\(\s*[^,()]+,\s*['"]([A-Z][A-Za-z0-9_]*)['"]""")
+# lm.emit snippet, Script form: emit.dp("Name", value)
+EMIT_DP = re.compile(r"""\.dp\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]""")
 CATCH_RETURN_ZERO = re.compile(r"catch\s*\([^)]*\)\s*\{[^{}]*?return\s+0\b", re.S)
 THRESHOLD = re.compile(r"^\s*(>|>=|<|<=|=|==|!=)\s*-?[\d.]+(\s+-?[\d.]+){0,2}\s*$")
 PASCAL = re.compile(r"^[A-Z][A-Za-z0-9]*$")
@@ -98,32 +118,34 @@ def normalise(raw: dict, report: Report) -> dict:
 
 
 def kind_of(module: dict) -> str | None:
-    if module.get("type") == 5 or "propertySourceType" in module or (
-            "script" in module and "datapoints" not in module):
+    if isinstance(module.get("type"), int) and module["type"] in MODULE_TYPES:
+        return MODULE_TYPES[module["type"]]
+    if "propertySourceType" in module or ("script" in module and "datapoints" not in module):
         return "propertysource"
-    if module.get("type") == 9 or "collectionIntervalSec" in module:
+    if "collectionIntervalSec" in module:
         return "topologysource"
     if "datapoints" in module:
         return "datasource"
     return None
 
 
-def scripts_of(module: dict) -> dict[str, str]:
-    out: dict[str, str] = {}
+def scripts_of(module: dict) -> dict[str, tuple[str, str]]:
+    """slot -> (language, text). Language is the export's script `type`, lowercased."""
+    out: dict[str, tuple[str, str]] = {}
     attrs = module.get("collectionAttrs")
     if isinstance(attrs, dict):
-        out["collect"] = attrs.get("content", "") or ""
+        out["collect"] = ((attrs.get("type") or "groovy").lower(), attrs.get("content", "") or "")
     elif isinstance(attrs, str):
         try:
-            out["collect"] = json.loads(attrs).get("scriptgroovy", "")
+            out["collect"] = ("groovy", json.loads(attrs).get("scriptgroovy", ""))
         except ValueError:
-            out["collect"] = attrs
+            out["collect"] = ("groovy", attrs)
     ad = ((module.get("activeDiscovery") or {}).get("params") or {})
-    if ad.get("content"):
-        out["discovery"] = ad["content"]
+    if isinstance(ad, dict) and ad.get("content"):
+        out["discovery"] = ((ad.get("type") or "groovy").lower(), ad["content"])
     script = module.get("script")
     if isinstance(script, dict):
-        out["propertysource"] = script.get("content", "") or ""
+        out["script"] = ((script.get("type") or "groovy").lower(), script.get("content", "") or "")
     return out
 
 
@@ -141,16 +163,22 @@ def check_common(module: dict, report: Report) -> None:
         report.error("empty appliesTo -- the module will apply to nothing")
 
 
-def check_scripts(module: dict, scripts: dict[str, str], kind: str, report: Report) -> None:
-    combined = "\n".join(scripts.values())
+def check_scripts(module: dict, scripts: dict[str, tuple[str, str]], kind: str,
+                  report: Report) -> None:
+    combined = "\n".join(text for _, text in scripts.values())
     if not combined.strip():
-        report.error("no embedded Groovy found")
+        report.error("no embedded script found")
         return
+    groovy = {slot: text for slot, (lang, text) in scripts.items() if lang == "groovy"}
+    powershell = {slot: text for slot, (lang, text) in scripts.items() if lang == "powershell"}
 
     # Secrets. A property that holds a secret must end in .credential or the portal shows
     # its value in plain text -- and renaming it later breaks every deployment quietly.
-    for prop in sorted(set(PROPERTY_LITERAL.findall(combined))):
+    found = set(PROPERTY_LITERAL.findall(combined)) | set(PROPERTY_TOKEN.findall(combined))
+    for prop in sorted(found):
         if prop.startswith(("system.", "auto.", "predef.", "topo.")):
+            continue
+        if prop.lower() in BUILTIN_CREDENTIAL_PROPERTIES:
             continue
         last = prop.rsplit(".", 1)[-1]
         if SECRET_WORDS.search(prop) and not prop.endswith(CREDENTIAL_SUFFIX) and last not in (
@@ -159,19 +187,49 @@ def check_scripts(module: dict, scripts: dict[str, str], kind: str, report: Repo
                          f"{CREDENTIAL_SUFFIX!r}; the portal-confirmed masking suffix is "
                          f"{CREDENTIAL_SUFFIX!r} -- pick the name once, renames go quiet")
 
-    for slot, text in scripts.items():
+    for slot, text in groovy.items():
         if text.strip() and "//!/lib-groovy/v4" not in text.splitlines()[0:3].__str__():
             report.warn(f"{slot} script has no '//!/lib-groovy/v4' first line to pin Groovy 4")
+        # A snippet loaded without the script's binding runs detached from it: emit.dp()
+        # then exits 0 and prints nothing the Collector can see. [LM recipes]
+        if "Snippets.getLoader()" in text and not re.search(
+                r"\.withBinding\(\s*(getBinding\(\)|binding)\s*\)|\.binding\s*=\s*binding", text):
+            report.error(f"{slot} script loads Collector snippets without "
+                         f".withBinding(getBinding()) -- emit.dp() and friends will exit 0 "
+                         f"and print nothing the Collector can parse")
 
-    if re.search(r"\.(push|pop)\(", combined):
+    groovy_text = "\n".join(groovy.values())
+    if re.search(r"\.(push|pop)\(", groovy_text):
         report.warn("List.push/pop were removed in Groovy 4; use add / remove(size-1)")
-    if re.search(r"\bnew\s+XmlSlurper|\bnew\s+XmlParser", combined) and "groovy.xml" not in combined:
+    if re.search(r"\bnew\s+XmlSlurper|\bnew\s+XmlParser", groovy_text) and \
+            "groovy.xml" not in groovy_text:
         report.warn("XmlSlurper/XmlParser moved to groovy.xml.* in Groovy 4")
+
+    for slot, text in powershell.items():
+        # Write-Host does not reliably reach stdout and slows BatchScript; debug-gated use
+        # is fine. [LM recipes]
+        for line in text.splitlines():
+            if re.search(r"\bWrite-Host\b", line) and not re.search(r"debug", line, re.I):
+                report.warn(f"{slot} script writes with Write-Host -- Collector data must go "
+                            f"through Write-Output; keep Write-Host for debug-gated messages")
+                break
 
     # Per script, not over the joined text: each embedded script runs on its own, so a gate
     # in the discovery script does not protect a bypass in the collection script.
-    for slot, text in scripts.items():
+    for slot, text in groovy.items():
         check_tls_bypass(slot, text, report)
+
+
+def check_active_discovery(module: dict, report: Report) -> None:
+    ad = module.get("activeDiscovery") or {}
+    for flag in ("deleteInactiveInstances", "autoDeleteInstances"):
+        if ad.get(flag):
+            report.error(f"activeDiscovery.{flag} is true -- an outage that makes discovery "
+                         f"fail or return nothing will delete instances and their history")
+    interval = ad.get("discoveryInterval")
+    if ad and interval is not None and interval not in DISCOVERY_INTERVALS:
+        report.error(f"activeDiscovery.discoveryInterval is {interval!r}; the portal takes "
+                     f"only {', '.join(DISCOVERY_INTERVALS)}")
 
 
 TLS_BYPASS = re.compile(r"X509TrustManager|setDefaultHostnameVerifier|TrustAll|"
@@ -232,7 +290,7 @@ def check_tls_bypass(slot: str, text: str, report: Report) -> None:
                     f"on them was found -- confirm the bypass only runs when the property is set")
 
 
-def check_datasource(module: dict, scripts: dict[str, str], report: Report) -> None:
+def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: Report) -> None:
     method = module.get("collectionMethod")
     batch = method == "batchscript"
     multi = module.get("multiInstance") is True
@@ -249,11 +307,7 @@ def check_datasource(module: dict, scripts: dict[str, str], report: Report) -> N
         report.error("useWildValueAsUniqueIdentifier is not true -- the wildvalue is not the "
                      "instance identity, so instances can be re-created and lose history")
 
-    ad = module.get("activeDiscovery") or {}
-    for flag in ("deleteInactiveInstances", "autoDeleteInstances"):
-        if ad.get(flag):
-            report.error(f"activeDiscovery.{flag} is true -- an outage that makes discovery "
-                         f"fail or return nothing will delete instances and their history")
+    check_active_discovery(module, report)
 
     names: list[str] = []
     for dp in datapoints:
@@ -294,34 +348,45 @@ def check_datasource(module: dict, scripts: dict[str, str], report: Report) -> N
     for dup in sorted({n for n in names if names.count(n) > 1}):
         report.error(f"datapoint {dup!r} is declared more than once")
 
-    collect = scripts.get("collect", "")
+    collect = scripts.get("collect", ("groovy", ""))[1]
     if collect:
-        if not re.search(r"return\s+[1-9]", collect):
+        if not re.search(r"\b(return|exit)\s+[1-9]", collect):
             report.warn("collection script has no non-zero exit; on API failure it must write "
-                        "the reason to System.err and return 2 so instances survive")
+                        "the reason to stderr and exit 2 so instances survive")
         if CATCH_RETURN_ZERO.search(collect):
             report.error("a catch block in the collection script returns 0 -- failures will "
                          "look like success (and zero-filled values like real data)")
         # Only lines that print count -- a literal like 'Bearer=' in a header is not output.
         print_lines = '\n'.join(line for line in collect.splitlines()
-                                if re.search(r'\bprint(ln)?\b|\bemit\w*\(|Emit\(', line))
-        printed = set(PRINTED_NAME.findall(print_lines)) | set(EMIT_CALL.findall(print_lines))
+                                if re.search(r'\bprint(ln)?\b|\bemit\w*\(|Emit\(|\.dp\(|'
+                                             r'\bWrite-Output\b', line))
+        printed = (set(PRINTED_NAME.findall(print_lines)) | set(EMIT_CALL.findall(print_lines))
+                   | set(EMIT_DP.findall(print_lines)))
         if printed:
             for extra in sorted(printed - set(names)):
                 report.warn(f"script appears to print {extra!r} but no datapoint declares it")
             for missing in sorted(set(names) - printed):
                 report.warn(f"datapoint {missing!r} is never visibly printed (heuristic: names "
                             f"built dynamically are invisible -- use string literals)")
-    discovery = scripts.get("discovery", "")
-    if batch and discovery and "replaceAll" not in discovery and "replaceAll" not in collect:
+    discovery = scripts.get("discovery", ("groovy", ""))[1]
+    snippet_fold = "emit.instance" in discovery and ".dp(" in collect
+    if batch and discovery and not snippet_fold and \
+            "replaceAll" not in discovery and "replaceAll" not in collect and \
+            "-replace" not in discovery and "-replace" not in collect:
         report.warn("no character fold visible on the wildvalue -- '.', spaces, ':', '=', '\\' "
                     "and '#' in an id break discovery or batchscript parsing")
-    if discovery and "####" not in discovery and "##" in discovery:
+    if ("emit.instance" in discovery) != (".dp(" in collect) and batch and discovery:
+        report.warn("only one of discovery (emit.instance) and collection (emit.dp) uses the "
+                    "lm.emit snippet -- it folds wildvalues its own way, so the other side "
+                    "must fold identically or every datapoint reads No Data")
+    if discovery and "####" not in discovery and "##" in discovery and \
+            "emit.instance" not in discovery:
         report.warn("discovery prints no '####' property separator -- fine for the minimal "
                     "'wildvalue##name' form, but instance properties need it")
 
 
-def check_propertysource(module: dict, scripts: dict[str, str], report: Report) -> None:
+def check_propertysource(module: dict, scripts: dict[str, tuple[str, str]],
+                         report: Report) -> None:
     if module.get("type") != 5:
         report.error(f"PropertySource type is {module.get('type')!r}; exports carry the integer 5")
     script = module.get("script")
@@ -336,9 +401,25 @@ def check_propertysource(module: dict, scripts: dict[str, str], report: Report) 
     elif "collectionInterval" in module:
         report.error("a plain PropertySource carries no collectionInterval -- only ERI ones do")
 
-    text = scripts.get("propertysource", "")
+    text = scripts.get("script", ("groovy", ""))[1]
+    if not eri:
+        # A PropertySource's properties are stored as auto.<key> [portal, LM docs]; the only
+        # system.* it can set is system.categories [LM docs].
+        printed = set(re.findall(r"""(?:println|print|Write-Output)\s*\(?\s*['"]([\w.-]+)=""",
+                                 text))
+        printed |= set(re.findall(r"""\.property\(\s*['"]([\w.-]+)['"]""", text))
+        for key in sorted(printed):
+            if key == "system.categories" or key.startswith("auto."):
+                continue
+            if key.startswith("system."):
+                report.warn(f"PropertySource sets {key!r}: system.categories is the only "
+                            f"system.* property a PropertySource can set")
+            else:
+                report.warn(f"PropertySource sets {key!r}, which the portal stores as "
+                            f"'auto.{key}' -- AppliesTo, other modules and docs must use "
+                            f"that name (a bare reference matches nothing)")
     if (module.get("appliesTo") or "").replace(" ", "") == "true()":
-        if re.search(r"return\s+[1-9]", text):
+        if re.search(r"\b(return|exit)\s+[1-9]", text):
             report.error("PropertySource on AppliesTo true() has a non-zero exit -- it runs on "
                          "every resource and must exit 0 silently on non-targets and errors")
         if any(re.search(r'(?<!System\.err\.)\bprintln\b|System\.out\.', body)
@@ -349,7 +430,8 @@ def check_propertysource(module: dict, scripts: dict[str, str], report: Report) 
                     "no stdout, or the suite applies itself to unrelated resources")
 
 
-def check_topologysource(module: dict, scripts: dict[str, str], report: Report) -> None:
+def check_topologysource(module: dict, scripts: dict[str, tuple[str, str]],
+                         report: Report) -> None:
     if module.get("type") != 9:
         report.error(f"TopologySource type is {module.get('type')!r}; exports carry the integer 9")
     if not isinstance(module.get("collectionIntervalSec"), int):
@@ -368,9 +450,30 @@ def check_topologysource(module: dict, scripts: dict[str, str], report: Report) 
             report.error("collectionAttrs.scripttype must be 'embed'")
         if not decoded.get("scriptgroovy"):
             report.error("collectionAttrs.scriptgroovy is empty")
-    if "generateTopology" not in scripts.get("collect", ""):
+    if "generateTopology" not in scripts.get("collect", ("groovy", ""))[1]:
         report.warn("topology output is not produced via lm.topo generateTopology -- hand-written "
                     "topology output means inventing a format")
+
+
+def check_shared_only(kind: str, module: dict, scripts: dict[str, tuple[str, str]],
+                      report: Report) -> None:
+    """Module types whose shapes come from LM's recipes, not from a portal import here."""
+    report.warn(f"{kind}: only the shared checks run on this module type (secrets, snippets, "
+                f"exits, discovery); its JSON shape is from LM's monitoring-recipes templates, "
+                f"not a portal import -- confirm by importing and exporting it")
+    if module.get("activeDiscovery"):
+        check_active_discovery(module, report)
+    if kind in ("diagnosticsource", "remediationsource") and not isinstance(
+            module.get("script"), dict):
+        report.error(f"{kind} script must be {{\"type\": ..., \"content\": ...}}")
+    if kind == "logsource" and not module.get("resourceMapping"):
+        report.warn("LogSource has no resourceMapping -- logs it imports are not tied to the "
+                    "monitored resource (map system.deviceId)")
+    if kind == "logsource":
+        text = scripts.get("collect", ("groovy", ""))[1]
+        if re.search(r"\b(return|exit)\s+[1-9]", text):
+            report.warn("LogSource exits non-zero somewhere: that discards ALL output of the "
+                        "run -- intended for failures only, never for partial results")
 
 
 # ------------------------------------------------------------------------- main
@@ -391,8 +494,11 @@ def lint(path: Path) -> Report | None:
     scripts = scripts_of(module)
     check_common(module, report)
     check_scripts(module, scripts, kind, report)
-    {"datasource": check_datasource, "propertysource": check_propertysource,
-     "topologysource": check_topologysource}[kind](module, scripts, report)
+    if kind in SHARED_CHECKS_ONLY:
+        check_shared_only(kind, module, scripts, report)
+    else:
+        {"datasource": check_datasource, "propertysource": check_propertysource,
+         "topologysource": check_topologysource}[kind](module, scripts, report)
     report.label = f"{path} [{kind}]"
     return report
 
