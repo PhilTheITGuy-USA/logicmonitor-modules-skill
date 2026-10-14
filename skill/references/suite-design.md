@@ -102,8 +102,9 @@ Nothing about a Collector is needed to test most of a suite:
   that can't fail is worse than none.
 - Fixture design: include a mix of states (an online and an offline member, both object kinds). Every
   new endpoint needs a fixture before its module can be tested.
-- Snippet-dependent scripts (topology/ERI) can't run here — keep their target logic in preamble
-  helpers the harness can call directly.
+- Snippet-dependent scripts (topology/ERI, and any module written snippet-first — see
+  `collector-scripting.md` §11) can't run here — keep their target logic in preamble helpers the
+  harness can call directly, and keep the snippet calls a thin layer on top.
 
 ## 9. Verification discipline
 
@@ -127,8 +128,13 @@ used or life remaining), HA/failover behaviour, permission-filtered empties, sca
 - [ ] `description` and a substantive `technicalNotes` on every module (what it calls, cost, conditional
       datapoints and why, known limits)
 - [ ] Self-applying via `addCategory_*` PropertySource; no manual per-resource flags
-- [ ] Credentials in `*.credential` properties; all properties documented with defaults
-- [ ] PascalCase datapoints with descriptions and units; correct gauge/derive; no reserved names
+- [ ] Credentials in `*.credential` properties (or LM's built-ins like `ssh.pass`); all properties
+      documented with defaults; properties a PropertySource sets are documented and referenced
+      by their stored `auto.*` names
+- [ ] PascalCase datapoints with descriptions and units; correct gauge/derive; no reserved names;
+      status codes mapped in `statusDisplayNames`; every datapoint used by a graph, alert or dashboard
+- [ ] Unit convention (canonical vs display units) chosen once and stated
+- [ ] HTTP client choice recorded; proxy-aware (`proto.http`) if Collectors may sit behind a proxy
 - [ ] Sensible default thresholds and `alertBody` text on the datapoints that should alert
 - [ ] `useWildValueAsUniqueIdentifier: true`, stable migration-safe wildvalues
 - [ ] No auto-delete of instances; non-zero exit on failure

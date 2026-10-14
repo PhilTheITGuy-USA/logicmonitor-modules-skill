@@ -65,7 +65,7 @@ Implements LMv1 for you. Most useful cmdlets for module work:
 | Repo | Use |
 |---|---|
 | `logicmonitor/dashboards` | Real dashboard exports with real module/datapoint names — schema source and parity reference for naming |
-| `logicmonitor/monitoring-recipes` | Reference Groovy, e.g. `DataSources/Groovy/HTTP/` for the santaba HTTP client |
+| `logicmonitor/monitoring-recipes` | LM's authoring guidance: `recipes/` (SNMP, SSH, HTTP, JDBC, WinRM, WMI starter scripts), `docs/` (module types, output formats), `skills/` (module + dashboard skills with templates and a corpus-derived dashboard schema). Distilled into this skill as **[LM recipes]** at `a7b45b6`; check it for changes when refreshing |
 | `logicmonitor/GroovyRemix` | Groovy 2 → 4 migration tooling |
 | `logicmonitor/lm-sdk-python`, `lm-sdk-go` etc. | Generated REST clients |
 

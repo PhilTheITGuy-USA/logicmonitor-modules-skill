@@ -33,6 +33,20 @@ week. **Count widgets after import; better, export and count.**
 | threshold `level` | `2` warn, `3` error (only these seen) |
 | dashboard `description` | ≤ 256 chars (portal truncates silently) |
 
+### Second tier: in LM's corpus, not import-tested here **[LM recipes]**
+
+LogicMonitor's `monitoring-recipes` dashboard skill (@ `a7b45b6`) publishes a schema built from its
+own export corpus. It allows more than the table above: 16 more themes (`newBorderBlue`,
+`newSolidGray`, `borderBlue`, … `newSimpleDarkBlue`), cgraph series type `column`, column
+`displayType` `colorBar`, table `topX` `10`, and widget types `gauge`, `pieChart`, `text`,
+`deviceSLA`, `gmap`. `lm_dashboards.py check` **warns** on these rather than failing — better
+evidence than an invention, weaker than an import. When a portal keeps one (export after import and
+`check` the export), move it into the first-tier tuples in `lm_dashboards.py`. Values a portal has
+dropped (`topX` 20/50/100, `displayType` `number`) stay errors whatever any corpus says.
+
+Cloud widgets (`billing`, `cloudRecommendation`, `viz`) carry portal-specific config: only ever
+start from a portal export of one.
+
 ## Exact key sets per widget config
 
 - **cgraph**: `description, displaySettings, graphInfo, interval, name, theme, timescale, type, version`
@@ -40,6 +54,26 @@ week. **Count widgets after import; better, export and count.**
 - **bigNumber**: `bigNumberInfo, description, displaySettings, interval, name, theme, timescale, type, version`
 - **noc**: `ackChecked, description, displayColumn, displayCriticalAlert, displayErrorAlert, displaySettings, displayWarnAlert, interval, items, name, sdtChecked, sortBy, theme, timescale, type, version`
 - **alert**: `description, displaySettings, filters, interval, name, theme, timescale, type, version`
+
+Second tier (from LM's templates, **[LM recipes]**):
+- **gauge**: `colorThresholds, dataPoint, description, displaySettings, displayType, displayUnit, interval, legend, maxValue, minValue, name, peakTimeRange, showPeak, theme, timescale, type, version` — `dataPoint` is a single object
+- **pieChart**: `description, displaySettings, interval, name, pieChartInfo, theme, timescale, type, version` — `pieChartInfo` holds both `dataPoints[]` (module + scope) and `pieChartItems[]` (slices by `dataPointName`, `color`, `legend`)
+- **text**: `content, description, displaySettings, interval, name, theme, timescale, type, version` — HTML in `content`
+- **deviceSLA**: `bottomLabel, calculationMethod, colorThresholds, daysInWeek, description, displayPercentageBar, displaySettings, displayType, interval, metrics, name, periodInOneDay, theme, timescale, timezone, topX, type, unmonitoredTimeType, version` — `metrics[]` use `metric`, not `dataPointName`
+- **gmap**: `ackChecked, description, displayCriticalAlert, displayErrorAlert, displaySettings, displayWarnAlert, interval, mapPoints, name, sdtChecked, theme, timescale, type, version`
+
+### Field shapes that differ by widget **[LM recipes]**, all checked by `lm_dashboards.py`
+
+| Widget | Names its module with | Scope fields |
+|---|---|---|
+| cgraph, bigNumber, pieChart, gauge, dynamicTable | `dataSourceFullName` = `"<displayedAs> (<name>)"` | cgraph: glob **objects** `{"isGlob": true, "value": "*"}`; the others: plain strings |
+| noc | `dataSourceDisplayName` — a display-name glob (`Proxmox VE*`, `(A*\|B*)`), **never** `dataSourceFullName` | plain strings |
+| dynamicTable rows | — | **`groupFullPath`**, not `deviceGroupFullPath` |
+
+Alert widget: `displaySettings.sort` is the **string** `"-startEpoch"` — an object
+(`{"columnKey": ..., "order": ...}`) imports and then crashes the widget at render with
+`TypeError: n.replace is not a function`; `displaySettings.playSound` is an **object**, not a
+boolean. Start alert widgets from the builder (or a known-good export), never from scratch.
 
 Each widget is `{"position": {"col","sizex","row","sizey"}, "config": {...}}` on a 12-column grid.
 Overlapping widgets render on top of each other without error — check the grid in your build.
@@ -75,6 +109,21 @@ Top level:
   **`##INSTANCE##`** or every series gets the same label. **[portal]**
 - A widget aimed at a datapoint that is only sometimes emitted renders **blank** rather than erroring.
   Put always-emitted datapoints on headline tiles.
+
+## Scaling units in the widget **[LM recipes]**
+
+If a module emits GB (see the units note in `collector-scripting.md` §6), a TB-scale graph labels
+its axis `124.5K`. Fix it on the dashboard without touching the module:
+
+- **cgraph**: add a virtual datapoint `{"name": "UsedBytes", "rpn": "UsedGB*1024*1024*1024",
+  "display": {"color": "Auto", "legend": "##INSTANCE##", "type": "line", "option": "custom"}}` to
+  `graphInfo.virtualDataPoints`, set `scaleUnit: 1024` and `verticalLabel: "bytes"`, and hide the
+  raw series with `display.option: "none"`.
+- **dynamicTable**: set the column's `rpn` to the same multiply and leave `unitLabel` empty so the
+  table auto-formats bytes. Percent columns need nothing.
+
+Not yet portal-tested here — export after import and check the series survived. A module that emits
+canonical bytes needs neither, but then a raw `bigNumber` may show E-notation **[portal]**.
 
 ## Don't use the newer `table` widget for shareable dashboards
 

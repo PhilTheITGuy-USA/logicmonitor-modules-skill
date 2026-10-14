@@ -18,5 +18,9 @@
   {"query": "write a nagios / icinga check plugin in bash that alerts when a TLS certificate on host:8006 expires within 30 days", "should_trigger": false},
   {"query": "we're evaluating logicmonitor vs datadog vs new relic for ~800 hosts, mostly vmware and windows. what are the pricing models and main tradeoffs", "should_trigger": false},
   {"query": "python script that hits the truenas REST api and writes every pool's name, size, allocated and health to a csv file every hour via cron", "should_trigger": false},
-  {"query": "what snmp OIDs does synology DSM expose for disk temperature and raid status? give me snmpwalk commands to test them", "should_trigger": false}
+  {"query": "what snmp OIDs does synology DSM expose for disk temperature and raid status? give me snmpwalk commands to test them", "should_trigger": false},
+  {"query": "logicmonitor: need a LogSource that pulls audit events from our Okta API every 5 minutes into LM Logs. what exactly does the groovy script need to print, and what happens if the API call fails halfway through?", "should_trigger": true},
+  {"query": "my LM collector powershell datasource uses Get-CimInstance to read disk queue length on our sql boxes. Test Script output looks fine but every datapoint shows No Data. using Write-Host to print the values", "should_trigger": true},
+  {"query": "powershell script for task scheduler that queries Win32_LogicalDisk with Get-CimInstance on 50 servers and emails a report when free space drops under 10%", "should_trigger": false},
+  {"query": "write a fluent-bit config that tails /var/log/app/*.log, parses our json log lines and ships them to elasticsearch with the hostname as a field", "should_trigger": false}
 ]

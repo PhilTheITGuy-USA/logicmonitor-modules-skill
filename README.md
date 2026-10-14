@@ -8,16 +8,26 @@ Distilled from building the Proxmox VE suite
 ([Proxmox-LogicModule](https://github.com/PhilTheITGuy-USA/Proxmox-LogicModule)): 17 modules and 2
 dashboards, verified in a real portal and against a live cluster.
 
+Extended with LogicMonitor's own authoring guidance,
+[logicmonitor/monitoring-recipes](https://github.com/logicmonitor/monitoring-recipes) at commit
+`a7b45b6` (Apache-2.0, © LogicMonitor): Collector snippets, ScriptCache, PowerShell, the
+Log/Event/Config/Diagnostic/Remediation module types, and a second, warn-only tier of dashboard
+vocabulary from LM's export corpus. That material is paraphrased, not copied, and tagged
+**[LM recipes]** wherever it is used — LogicMonitor's word, not yet observed in a portal here. Where
+it conflicts with portal experience (e.g. its templates auto-delete instances), the skill keeps the
+portal's answer and says so. To refresh, diff the repo from `a7b45b6` and re-tag what changed.
+
 ## Layout
 
 ```
 skill/                       the installable skill -- the only part Claude Code loads
   SKILL.md                   rules that fail silently, workflow, pointers
-  references/*.md            scripting contract, export schema, dashboards, API, suite design
+  references/*.md            scripting contract, PowerShell, other module types, export schema,
+                             dashboards, API, suite design
   scripts/lm_lint_module.py  lints module JSON for silent failures
   scripts/lm_dashboards.py   dashboard builder + validator (from LM's published exports)
 tests/
-  test_tools.py              self-test for the two scripts: known-good + mutation cases
+  test_tools.py              self-test for the two scripts: known-good, mutation, must-pass cases
   fixtures/proxmox/          known-good exports (Proxmox-LogicModule @ fb8aa9b, portal-verified)
 evals/
   evals.json                 test prompts for skill-vs-no-skill comparison
@@ -67,4 +77,7 @@ New-Item -ItemType Junction -Path "$HOME\.claude\skills\logicmonitor-modules" -T
 
 Trigger accuracy (`evals/trigger_eval.py`, 20 queries × 3 runs, 2026-10-08): **20/20** with the
 original description (LMv1 REST-signing query weakest, 2 of 3 runs). After adding LMv1/401 and
-bearer-token wording to the description: **20/20**, LMv1 query 3 of 3.
+bearer-token wording to the description: **20/20**, LMv1 query 3 of 3. After adding the
+monitoring-recipes material (other module types, PowerShell, snippets) to the description, with 4
+new queries (LogSource and PowerShell should-trigger; plain PowerShell and Fluent Bit near-misses),
+2026-10-14: **24/24**, every query 3 of 3.

@@ -120,10 +120,89 @@ def dashboard_mutations() -> dict[str, dict]:
     m["overlapping widgets"] = x
     x = copy.deepcopy(tier1); x["description"] = "x" * 300
     m["description over 256 chars"] = x
-    x = copy.deepcopy(tier1); x["widgets"][0]["config"]["theme"] = "newBorderBlue"
+    x = copy.deepcopy(tier1); x["widgets"][0]["config"]["theme"] = "newBorderTeal"
     m["invented theme"] = x
     x = copy.deepcopy(tier1); x["widgets"][0]["config"]["id"] = 1
     m["extra widget key"] = x
+    x = copy.deepcopy(tier1); first(x, "alert")["displaySettings"]["sort"] = {"columnKey": "alert-severity", "order": "descending"}
+    m["alert sort as an object"] = x
+    x = copy.deepcopy(tier1); first(x, "alert")["displaySettings"]["playSound"] = False
+    m["alert playSound as a boolean"] = x
+    x = copy.deepcopy(tier1); item = first(x, "noc")["items"][0]
+    item["dataSourceFullName"] = item.pop("dataSourceDisplayName")
+    m["noc item names dataSourceFullName"] = x
+    x = copy.deepcopy(tier1); row = first(x, "dynamicTable")["rows"][0]
+    row["deviceGroupFullPath"] = row.pop("groupFullPath")
+    m["table row uses deviceGroupFullPath"] = x
+    x = copy.deepcopy(tier1); first(x, "cgraph")["graphInfo"]["dataPoints"][0]["instanceName"] = "*"
+    m["cgraph scope as a plain string"] = x
+    return m
+
+
+def dashboard_corpus_values() -> dict[str, dict]:
+    """Values only LM's monitoring-recipes corpus vouches for: must pass, with a WARN."""
+    tier1 = json.loads((GOOD / "dashboards" / "Proxmox_VE_Tier1.json").read_text(encoding="utf-8"))
+
+    def first(d: dict, kind: str) -> dict:
+        return next(w for w in d["widgets"] if w["config"]["type"] == kind)["config"]
+
+    m = {}
+    x = copy.deepcopy(tier1); x["widgets"][0]["config"]["theme"] = "newBorderBlue"
+    m["theme newBorderBlue"] = x
+    x = copy.deepcopy(tier1); first(x, "dynamicTable")["columns"][0]["displayType"] = "colorBar"
+    m["column displayType colorBar"] = x
+    x = copy.deepcopy(tier1); first(x, "dynamicTable")["topX"] = 10
+    m["table topX 10"] = x
+    return m
+
+
+SNIPPET_BOOTSTRAP_UNBOUND = (
+    "import com.santaba.agent.groovy.utils.GroovyScriptHelper as GSH\n"
+    "import com.logicmonitor.mod.Snippets\n"
+    "def modLoader = GSH.getInstance(GroovySystem.version).getScript('Snippets', Snippets.getLoader())\n"
+    "def emit = modLoader.load('lm.emit', '0')\n")
+
+
+def other_module(kind: int, **extra) -> dict:
+    """A minimal module of a type the linter gives shared checks only."""
+    m = {"name": "Vendor_Product_Thing", "displayedAs": "Vendor Product Thing",
+         "description": "x", "technicalNotes": "x", "appliesTo": 'hasCategory("VendorProduct")',
+         "type": kind}
+    m.update(extra)
+    return m
+
+
+def other_module_mutations() -> dict[str, dict]:
+    nodes = load("Proxmox_VE_Nodes.json")
+    groovy = {"type": "groovy", "content": "//!/lib-groovy/v4\nprintln 'x'\nreturn 0\n"}
+    m = {}
+    x = copy.deepcopy(nodes); x["activeDiscovery"]["discoveryInterval"] = "1d"
+    m["discoveryInterval outside 0m/15m/60m/1440m"] = x
+    x = copy.deepcopy(nodes)
+    x["collectionAttrs"]["content"] = x["collectionAttrs"]["content"].replace(
+        "//!/lib-groovy/v4\n", "//!/lib-groovy/v4\n" + SNIPPET_BOOTSTRAP_UNBOUND, 1)
+    m["snippets loaded without withBinding"] = x
+    x = copy.deepcopy(nodes)
+    x["collectionAttrs"] = {"type": "powershell",
+                            "content": "$secret = '##vendor.api.password##'\nWrite-Output 'x'\nexit 0\n"}
+    m["PowerShell token for a secret without .credential"] = x
+    m["DiagnosticSource script not an object"] = other_module(11, script="println 'x'")
+    m["ConfigSource auto-deletes instances"] = other_module(
+        6, collectionMethod="script", multiInstance=True, collectionAttrs=groovy,
+        activeDiscovery={"discoveryMethod": "ad_script", "discoveryInterval": "60m",
+                         "deleteInactiveInstances": False, "autoDeleteInstances": True,
+                         "params": groovy})
+    return m
+
+
+def module_must_pass() -> dict[str, dict]:
+    nodes = load("Proxmox_VE_Nodes.json")
+    groovy = {"type": "groovy", "content": "//!/lib-groovy/v4\nprintln 'x'\nreturn 0\n"}
+    m = {}
+    x = copy.deepcopy(nodes)
+    x["collectionAttrs"]["content"] += "\ndef sshPass = hostProps.get('ssh.pass')\n"
+    m["LM built-in credential property ssh.pass"] = x
+    m["minimal DiagnosticSource"] = other_module(11, script=groovy)
     return m
 
 
@@ -139,6 +218,12 @@ def main() -> int:
     expect(f"{len(good_dash)} known-good dashboards pass with reference resolution", r.returncode == 0,
            r.stdout + r.stderr)
 
+    # Proxmox's category PropertySource prints bare pve.* keys, which the portal stores as
+    # auto.pve.* [portal]: the lint must name the real property (a warning, not an error).
+    r = run(LINT + [str(GOOD / "addCategory_Proxmox_VE.json")])
+    expect("lint names the auto. property a bare PropertySource key becomes",
+           r.returncode == 0 and "'auto.pve.version'" in r.stdout, r.stdout)
+
     r = run(LINT + [str(BAD_INPUT)])
     expect("planted-bug eval input fails lint", r.returncode == 1 and r.stdout.count("ERROR") >= 5, r.stdout)
 
@@ -148,11 +233,27 @@ def main() -> int:
             path.write_text(json.dumps(module), encoding="utf-8")
             r = run(LINT + [str(path)])
             expect(f"lint catches: {name}", r.returncode == 1, r.stdout)
+        for name, module in other_module_mutations().items():
+            path = Path(tmp) / "m.json"
+            path.write_text(json.dumps(module), encoding="utf-8")
+            r = run(LINT + [str(path)])
+            expect(f"lint catches: {name}", r.returncode == 1, r.stdout)
+        for name, module in module_must_pass().items():
+            path = Path(tmp) / "m.json"
+            path.write_text(json.dumps(module), encoding="utf-8")
+            r = run(LINT + [str(path)])
+            expect(f"lint accepts: {name}", r.returncode == 0, r.stdout)
         for name, dash in dashboard_mutations().items():
             path = Path(tmp) / "d.json"
             path.write_text(json.dumps(dash), encoding="utf-8")
             r = run(DASH + [str(path), "--modules", str(GOOD)])
             expect(f"dashboard check catches: {name}", r.returncode == 1, r.stdout)
+        for name, dash in dashboard_corpus_values().items():
+            path = Path(tmp) / "d.json"
+            path.write_text(json.dumps(dash), encoding="utf-8")
+            r = run(DASH + [str(path), "--modules", str(GOOD)])
+            expect(f"dashboard check warns but passes: {name}",
+                   r.returncode == 0 and "WARN" in r.stdout, r.stdout)
 
     print(f"\n{'ALL PASSED' if not failures else f'{len(failures)} FAILED'}")
     return 1 if failures else 0
