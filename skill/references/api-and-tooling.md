@@ -58,7 +58,29 @@ Implements LMv1 for you. Most useful cmdlets for module work:
 - Resource → instance → **Raw Data** tab shows what was actually recorded. Use **Poll Now** rather than
   waiting out a long interval; a module not yet due looks identical to a broken one.
 - Resource → **Info** shows properties, including `system.categories` set by PropertySources.
-- Collector debug console (`!groovy`, `!adlist`, `!tlist` etc.) on the Collector page.
+- Collector debug console (`!groovy`, `!adlist`, `!tlist` etc.) — see below for how to reach it.
+
+### Opening the Collector debug console (new UI, portal-confirmed 2026-10)
+
+LogicMonitor's own docs give the path as Collectors → More (⋮) → **Run Debug Command**. In a
+current portal that entry **does not exist** until debug access is turned on, and nothing says so:
+
+1. **Settings → Security → enable Collector Debug.** Without it the debug entry point is absent.
+2. Then open the debug window for the Collector from **Settings → Collectors** (which control
+   appears there once debug is enabled was not recorded — ask the user what they see).
+3. In the debug window type `!groovy` on its own and press Enter; an input box opens. Paste the script
+   **without** a `!groovy` line and submit. The script's return value and stdout are shown.
+
+Do not guess at the Collectors row icons: the globe-with-magnifier in the Actions column is
+**Schedule NetScan**, not debug, and the ⋮ menu holds logs, events, status, configuration,
+download, delete and restart — no debug command. When walking a user through the UI, give one
+step at a time and confirm before the next; menus differ by portal version and permissions.
+
+A `!groovy` script has no resource bound, so snippets that read `hostProps` at load time
+(`lm.topo`, `lm.data.topo`) need it to exist first:
+`if (!binding.hasVariable('hostProps')) { binding.setVariable('hostProps', [:]) }`, then load the
+snippets `.withBinding(getBinding())` as usual. This is how `lm.data.topo`'s OUI and keyword tables
+were dumped from a live Collector.
 
 ## LogicMonitor GitHub repos worth mining
 
