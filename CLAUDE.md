@@ -31,6 +31,23 @@ python evals/trigger_eval.py [--description-file new.txt] [--runs 3] [--workers 
 `test_tools.py` has no per-case filter; it is one fast run of everything. To debug a single case,
 write that mutation to a file and run the relevant script on it directly.
 
+## How the two scripts are built
+
+- `lm_lint_module.py`, per file in `lint()`: `normalise()` maps the REST API model
+  (`dataPoints`, `postProcessorParam`, ...) onto the Toolbox export shape (with a WARN), then
+  `kind_of()` picks the type from `MODULE_TYPES`. A non-module JSON returns `None` and is skipped,
+  which is why a directory of mixed files is safe to pass. Every type gets `check_common` and
+  `check_scripts`. DataSource, PropertySource and TopologySource then get their own `check_*`.
+  The recipes-only types in `SHARED_CHECKS_ONLY` get `check_shared_only`, which always WARNs that
+  their shape was not checked against a portal. Put a new check in the narrowest of these that fits.
+- `lm_dashboards.py` is a library as well as a CLI (`check` is its only subcommand). Suites
+  import `Dashboard`/`module_ref` from it in their dashboard builders, so a change to the
+  builders changes every suite's generated dashboards, not just what gets validated.
+  `check_dashboard` validates against `REFERENCE_KEYS` and the first-tier/`UNVERIFIED_*` tuples.
+- The mutations in `test_tools.py` start from fixture modules and patch literal script text
+  (e.g. `GATE`, `in_all_scripts()`). If the fixtures are refreshed and that text changes, a
+  mutation can stop applying, and its case fails as "not caught" even though the lint still works.
+
 ## How the self-test works
 
 `tests/test_tools.py` runs the scripts as subprocesses against:
