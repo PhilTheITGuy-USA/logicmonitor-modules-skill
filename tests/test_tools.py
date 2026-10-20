@@ -206,6 +206,23 @@ def module_must_pass() -> dict[str, dict]:
     return m
 
 
+ERI_CALL = "emitEri('proxmoxve', 1, keys, ert"
+
+
+def module_warns() -> dict[str, tuple[dict, str]]:
+    """Heuristic findings: each must pass (exit 0) with a WARN containing the given text."""
+    eri = load("addERI_Proxmox_VE.json")
+    m = {}
+    x = copy.deepcopy(eri)
+    assert ERI_CALL in x["script"]["content"], "addERI fixture no longer carries " + ERI_CALL
+    x["script"]["content"] = x["script"]["content"].replace(
+        ERI_CALL, "emitEri('virt.x', 1, keys, 'VirtualMachineResource'")
+    # The ERT comes from the highest-priority ERI entry across all categories [portal]:
+    # at priority 1 the built-in net.l2 entry (priority 2) keeps PhysicalServer.
+    m["ERI type override below priority 3"] = (x, "priority")
+    return m
+
+
 def main() -> int:
     good_modules = sorted(str(p) for p in GOOD.glob("*.json"))
     r = run(LINT + good_modules)
@@ -223,6 +240,11 @@ def main() -> int:
     r = run(LINT + [str(GOOD / "addCategory_Proxmox_VE.json")])
     expect("lint names the auto. property a bare PropertySource key becomes",
            r.returncode == 0 and "'auto.pve.version'" in r.stdout, r.stdout)
+
+    r = run(LINT + [str(GOOD / "addERI_Proxmox_VE.json")])
+    expect("lint does not warn on the known-good ERI PropertySource's priority",
+           r.returncode == 0 and not any(l.strip().startswith("WARN") and "priority" in l
+                                         for l in r.stdout.splitlines()), r.stdout)
 
     r = run(LINT + [str(BAD_INPUT)])
     expect("planted-bug eval input fails lint", r.returncode == 1 and r.stdout.count("ERROR") >= 5, r.stdout)
@@ -243,6 +265,13 @@ def main() -> int:
             path.write_text(json.dumps(module), encoding="utf-8")
             r = run(LINT + [str(path)])
             expect(f"lint accepts: {name}", r.returncode == 0, r.stdout)
+        for name, (module, needle) in module_warns().items():
+            path = Path(tmp) / "m.json"
+            path.write_text(json.dumps(module), encoding="utf-8")
+            r = run(LINT + [str(path)])
+            expect(f"lint warns but passes: {name}",
+                   r.returncode == 0 and any(l.strip().startswith("WARN") and needle in l
+                                             for l in r.stdout.splitlines()), r.stdout)
         for name, dash in dashboard_mutations().items():
             path = Path(tmp) / "d.json"
             path.write_text(json.dumps(dash), encoding="utf-8")

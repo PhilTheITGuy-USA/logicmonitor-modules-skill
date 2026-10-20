@@ -61,7 +61,8 @@ write that mutation to a file and run the relevant script on it directly.
    build a module or dashboard with exactly one silent-failure defect and require exit 1. Adding a
    check means adding a mutation here; a check that cannot go red is treated as worse than none.
 4. **Must-pass** — `module_must_pass()` (e.g. LM's built-in `ssh.pass`) must exit 0, and
-   `dashboard_corpus_values()` must exit 0 *with* a `WARN`. These guard against false positives
+   `dashboard_corpus_values()` and `module_warns()` (e.g. an ERI type override below priority 3)
+   must exit 0 *with* a `WARN` (for `module_warns()`, one naming the finding). These guard against false positives
    when tightening a check.
 
 New cases all passing proves nothing: confirm each fails for its intended reason (read its ERROR
