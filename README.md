@@ -5,7 +5,7 @@ DataSources, PropertySources (including ERI), TopologySources and dashboards —
 Community standard, and to avoid the defects that import cleanly and then fail silently.
 
 Distilled from building the Proxmox VE suite
-([Proxmox-LogicModule](https://github.com/PhilTheITGuy-USA/Proxmox-LogicModule)): 17 modules and 2
+([Proxmox-LogicModule](https://github.com/PhilTheITGuy-USA/Proxmox-LogicModule)): 18 modules and 2
 dashboards, verified in a real portal and against a live cluster.
 
 Extended with LogicMonitor's own authoring guidance,
@@ -28,7 +28,7 @@ skill/                       the installable skill -- the only part Claude Code 
   scripts/lm_dashboards.py   dashboard builder + validator (from LM's published exports)
 tests/
   test_tools.py              self-test for the two scripts: known-good, mutation, must-pass cases
-  fixtures/proxmox/          known-good exports (Proxmox-LogicModule @ fb8aa9b, portal-verified)
+  fixtures/proxmox/          known-good exports (Proxmox-LogicModule @ 1543b58, portal-verified)
 evals/
   evals.json                 test prompts for skill-vs-no-skill comparison
   inputs/                    files those prompts use

@@ -52,7 +52,7 @@ write that mutation to a file and run the relevant script on it directly.
 
 `tests/test_tools.py` runs the scripts as subprocesses against:
 
-1. **Known-good** — `tests/fixtures/proxmox/` (17 modules + 2 dashboards, portal-verified). Must lint
+1. **Known-good** — `tests/fixtures/proxmox/` (18 modules + 2 dashboards, portal-verified). Must lint
    with zero ERRORs and pass `check` with reference resolution. A new check that fires on these
    fixtures is wrong, or the fixtures need a deliberate, portal-verified refresh.
 2. **Planted bugs** — `evals/inputs/Acme_Array_Volumes.json` must fail lint with ≥5 ERRORs. This file
