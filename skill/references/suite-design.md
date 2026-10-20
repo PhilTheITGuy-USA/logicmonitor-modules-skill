@@ -77,9 +77,14 @@ in `technicalNotes`. Never print 0 to keep a build check quiet.
 
 ## 7. Topology
 
-Worth building only if the related objects are also monitored as their own resources. Vertices match
-on ERI keys; the portal draws only vertices that match a resource. See
-`collector-scripting.md` §9 for mechanics. Topology fan-out (per-VM config reads) is O(instances) —
+Worth building only if the related objects are also monitored — as their own resources, or as
+DataSource instances carrying an instance-level ERI. Vertices match on ERI keys; the portal draws
+only vertices that match a resource's ERI or an instance's (`predef.externalResourceID` /
+`predef.externalResourceType` set in Active Discovery, as LM's `VMware_vSphere_VirtualMachineStatus`
+does), so objects that are only instances can be mapped **[portal, 2026-10-19]**. An ERI
+PropertySource that must change a resource's ERT needs priority 3 or more: the type comes from the
+highest-priority entry across all categories, and the built-in `net.l2` entry is priority 2
+**[portal, 2026-10-19]**. See `collector-scripting.md` §9 for mechanics. Topology fan-out (per-VM config reads) is O(instances) —
 hourly interval.
 
 ## 8. Local testing

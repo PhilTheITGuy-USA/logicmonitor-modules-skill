@@ -269,15 +269,30 @@ lmTopo.printEriArray(eriArray, keyNamespace, keyBlacklist)
 ```
 
 Behaviour **[portal]**:
-- The map draws **only vertices whose key matches a monitored resource's ERI**. A child that is
-  emitted but matches nothing simply isn't drawn. Use Test Script on the TopologySource to separate
-  "not emitted" from "not drawn".
+- The map draws **only vertices whose key matches an ERI** — a monitored resource's, or a
+  DataSource instance's (next bullet). A child that is emitted but matches neither simply isn't
+  drawn. Use Test Script on the TopologySource to separate "not emitted" from "not drawn".
+- **Objects that are only instances can be mapped** **[portal, 2026-10-19]**. A DataSource whose
+  Active Discovery sets the *instance* properties `predef.externalResourceID` (e.g. a guest MAC) and
+  `predef.externalResourceType` (e.g. `VirtualMachine`) makes that instance a vertex the map draws —
+  a ping-only container with no LM resource of its own was drawn under its host node. LM's own
+  `VMware_vSphere_VirtualMachineStatus` does the same **[LM export]**. So an object needs neither its
+  own resource nor an ERI PropertySource to appear on the map.
 - Monitored hosts typically get MAC-keyed ERIs from SNMP discovery (`predef.externalResourceID`). A VM
-  that doesn't answer SNMP has no MAC ERI and won't match.
+  that doesn't answer SNMP has no MAC ERI and won't match as a resource — give it an instance-level
+  ERI instead (previous bullet).
+- **The ERT comes from the highest-priority ERI entry across *all* categories; keys from every
+  category merge into the ID** **[portal, 2026-10-19]**. LM's built-in `addERI_Linux` /
+  `addERI_Windows` emit `net.l2` at **priority 2**. A second ERI PropertySource emitting category
+  `virt.proxmoxve` at priority 1 had its key merged into `predef.externalResourceID` while
+  `predef.externalResourceType` stayed `PhysicalServer`; at priority 3 the type became
+  `VirtualMachineResource`. To override the type, emit at **priority 3 or more**; to only add keys,
+  any priority works. `lm_lint_module.py` warns on a non-`PhysicalServer` ERT below priority 3.
 - When the source API exposes no hardware id for an object, synthesise a key with one shared helper
   and stamp the same key via an ERI PropertySource on that object's resource. Both sides must produce
   byte-identical, lowercased keys.
-- Use your own ERI category so you merge with, rather than fight, the MAC keys already present.
+- Use your own ERI category so you merge with, rather than fight, the MAC keys already present
+  (the priority then decides only the ERT, above).
 - Use a synthesised fallback key only for **permanent** absence (no NIC). On a transient read failure
   skip the edge — otherwise identity flips for one run.
 

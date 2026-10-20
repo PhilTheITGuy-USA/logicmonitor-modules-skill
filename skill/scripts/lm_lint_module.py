@@ -385,6 +385,31 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
                     "'wildvalue##name' form, but instance properties need it")
 
 
+# emitEri('<category>', <priority>, <keys>, <ERT>, ...) -- the ERT as a literal or a variable.
+EMIT_ERI = re.compile(r"""emitEri\(\s*(['"])([^'"]*)\1\s*,\s*(\d+)\s*,\s*"""
+                      r"""(?:\[[^\]]*\]|[^,()]+)\s*,\s*(?:(['"])([^'"]*)\4|(\w+))""")
+
+
+def check_eri_priority(text: str, report: Report) -> None:
+    # The resource's ERT comes from the highest-priority ERI entry across ALL categories,
+    # while keys from every category merge into the ID [portal, 2026-10-19]. LM's built-in
+    # addERI_Linux / addERI_Windows emit net.l2 at priority 2, so a type override below
+    # priority 3 merges its keys but leaves the type PhysicalServer.
+    for match in EMIT_ERI.finditer(text):
+        category, priority, ert = match.group(2), int(match.group(3)), match.group(5)
+        if ert is None:
+            # A variable ERT: resolve it only from an unambiguous string assignment.
+            assigned = set(re.findall(r"""\b%s\s*=\s*['"]([^'"]*)['"]"""
+                                      % re.escape(match.group(6)), text))
+            ert = assigned.pop() if len(assigned) == 1 else None
+        if ert is None or ert == "PhysicalServer" or priority >= 3:
+            continue
+        report.warn(f"emitEri({category!r}, {priority}, ..., {ert!r}): the ERT comes from the "
+                    f"highest-priority ERI entry across all categories, so this type will not "
+                    f"override the built-in net.l2 entry (priority 2) -- it needs priority 3 "
+                    f"or more (its keys still merge into the ID)")
+
+
 def check_propertysource(module: dict, scripts: dict[str, tuple[str, str]],
                          report: Report) -> None:
     if module.get("type") != 5:
@@ -402,6 +427,8 @@ def check_propertysource(module: dict, scripts: dict[str, tuple[str, str]],
         report.error("a plain PropertySource carries no collectionInterval -- only ERI ones do")
 
     text = scripts.get("script", ("groovy", ""))[1]
+    if eri:
+        check_eri_priority(text, report)
     if not eri:
         # A PropertySource's properties are stored as auto.<key> [portal, LM docs]; the only
         # system.* it can set is system.categories [LM docs].
