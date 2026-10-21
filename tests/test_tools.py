@@ -92,6 +92,12 @@ def module_mutations() -> dict[str, dict]:
     m["TopologySource collectionAttrs as object"] = x
     x = copy.deepcopy(topo); x["type"] = "9"
     m["TopologySource type as string"] = x
+    # The portal refused to save a TopologySource whose technicalNotes ran to 4302
+    # characters: "Field value cannot contain more than 4096 characters" [portal].
+    x = copy.deepcopy(topo); x["technicalNotes"] = "x" * 4097
+    m["technicalNotes over 4096 characters"] = x
+    x = copy.deepcopy(nodes); x["description"] = "x" * 4097
+    m["description over 4096 characters"] = x
     return m
 
 
@@ -203,6 +209,8 @@ def module_must_pass() -> dict[str, dict]:
     x["collectionAttrs"]["content"] += "\ndef sshPass = hostProps.get('ssh.pass')\n"
     m["LM built-in credential property ssh.pass"] = x
     m["minimal DiagnosticSource"] = other_module(11, script=groovy)
+    x = copy.deepcopy(load("Proxmox_VE_Topology.json")); x["technicalNotes"] = "x" * 4096
+    m["technicalNotes of exactly 4096 characters"] = x
     return m
 
 

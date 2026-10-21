@@ -49,6 +49,11 @@ silent-failure rules on this page and in `collector-scripting.md`.
 - `registryMetadata` / `integrationMetadata` lineage blocks appear in published modules but are **not
   required** for import — don't fabricate them. **[portal]** Nor copy them, or `version`, or a
   datapoint's `originId`, from an export into a new module: the portal assigns those **[LM recipes]**.
+- **Every metadata text field is capped at 4096 characters [portal]** — in practice
+  `technicalNotes`, which grows as a module accumulates rationale and UNVERIFIED paragraphs. Past
+  the cap, **Save** in My Module Toolbox fails with "Field value cannot contain more than 4096
+  characters" and names no field (a TopologySource, 2026-10-21, at 4302). Scripts are not capped.
+  `lm_lint_module.py` errors on it; trim the notes rather than split them.
 - `displayedAs` uses spaces, `name` underscores. A trailing `-` on `displayedAs` (`Nginx-`) is LM's
   convention for multi-instance modules and shows up in dashboard references; avoid internal
   hyphens **[LM recipes]**.

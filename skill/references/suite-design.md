@@ -131,7 +131,7 @@ used or life remaining), HA/failover behaviour, permission-filtered empties, sca
 
 - [ ] `Vendor_Product_Component` names, `displayedAs`, single suite `group`, `searchKeywords`
 - [ ] `description` and a substantive `technicalNotes` on every module (what it calls, cost, conditional
-      datapoints and why, known limits)
+      datapoints and why, known limits), each field at most 4096 characters
 - [ ] Self-applying via `addCategory_*` PropertySource; no manual per-resource flags
 - [ ] Credentials in `*.credential` properties (or LM's built-ins like `ssh.pass`); all properties
       documented with defaults; properties a PropertySource sets are documented and referenced
