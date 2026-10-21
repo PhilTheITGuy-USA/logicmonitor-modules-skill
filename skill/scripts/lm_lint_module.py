@@ -151,7 +151,19 @@ def scripts_of(module: dict) -> dict[str, tuple[str, str]]:
 
 # ---------------------------------------------------------------- shared checks
 
+# The portal refuses to save a module whose text field passes 4096 characters ("Field value
+# cannot contain more than 4096 characters"), naming no field [portal]. Scripts are exempt:
+# collectionAttrs is a script container (a JSON string on a TopologySource), and every other
+# script sits inside an object, so only top-level metadata strings are measured.
+MAX_FIELD_CHARS = 4096
+SCRIPT_FIELDS = {"collectionAttrs"}
+
+
 def check_common(module: dict, report: Report) -> None:
+    for key, value in module.items():
+        if key not in SCRIPT_FIELDS and isinstance(value, str) and len(value) > MAX_FIELD_CHARS:
+            report.error(f"{key} is {len(value)} characters; the portal refuses to save a "
+                         f"field over {MAX_FIELD_CHARS}")
     name = module.get("name") or ""
     if not MODULE_NAME.match(name):
         report.warn(f"name {name!r} is not Vendor_Product_Component form")
