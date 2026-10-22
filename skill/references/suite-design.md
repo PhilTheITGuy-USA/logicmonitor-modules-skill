@@ -90,7 +90,7 @@ only vertices that match a resource's ERI or an instance's (`predef.externalReso
 does), so objects that are only instances can be mapped **[portal, 2026-10-19]**. An ERI
 PropertySource that must change a resource's ERT needs priority 3 or more: the type comes from the
 highest-priority entry across all categories, and the built-in `net.l2` entry is priority 2
-**[portal, 2026-10-19]**. A vertex carries **one** key: lm.topo joins several into one ID the portal matches only against a resource carrying all of them **[portal, 2026-10-21]**. An edge between two resources other than the one running the TopologySource is drawn, and a resource wins over an instance with the same key **[portal, 2026-10-22]**. See `collector-scripting.md` §9 for mechanics. Topology fan-out (per-VM config reads) is O(instances) —
+**[portal, 2026-10-19]**. A vertex carries **one** key: lm.topo joins several into one ID the portal matches only against a resource carrying all of them **[portal, 2026-10-21]**. An edge between two resources other than the one running the TopologySource is drawn, and a resource wins over an instance with the same key; an instance-only guest is drawn under the host it runs on even when another resource holds the instance **[portal, 2026-10-22]**. See `collector-scripting.md` §9 for mechanics. Topology fan-out (per-VM config reads) is O(instances) —
 hourly interval.
 
 ## 8. Local testing
