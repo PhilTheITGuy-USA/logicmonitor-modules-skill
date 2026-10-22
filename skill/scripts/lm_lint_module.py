@@ -489,9 +489,39 @@ def check_topologysource(module: dict, scripts: dict[str, tuple[str, str]],
             report.error("collectionAttrs.scripttype must be 'embed'")
         if not decoded.get("scriptgroovy"):
             report.error("collectionAttrs.scriptgroovy is empty")
-    if "generateTopology" not in scripts.get("collect", ("groovy", ""))[1]:
+    text = scripts.get("collect", ("groovy", ""))[1]
+    if "generateTopology" not in text:
         report.warn("topology output is not produced via lm.topo generateTopology -- hand-written "
                     "topology output means inventing a format")
+    check_vertex_keys(text, report)
+
+
+# A vertex built from a list literal: eriPreProcessor([...], ...) or a wrapper such as eri([...]).
+VERTEX_KEYS = re.compile(r"\b(?:eriPreProcessor|eri)\(\s*\[")
+
+
+def check_vertex_keys(text: str, report: Report) -> None:
+    # lm.topo joins a vertex's keys into one ID with '_', and the portal then matches only a
+    # resource carrying ALL of them, not any one [portal, 2026-10-21]: a node vertex given a
+    # cluster-scoped and an IP key left the node that carried only the IP key unmatched.
+    for match in VERTEX_KEYS.finditer(text):
+        depth, commas, i = 0, 0, match.end()
+        while i < len(text):
+            c = text[i]
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif c == "," and depth == 0:
+                commas += 1
+            i += 1
+        if commas:
+            report.warn(f"topology vertex built from {commas + 1} keys "
+                        f"({text[match.start():i + 1]}): lm.topo joins them into one ID and the "
+                        f"portal matches only a resource carrying all of them -- give a vertex "
+                        f"one key unless every matching resource carries every key")
 
 
 def check_shared_only(kind: str, module: dict, scripts: dict[str, tuple[str, str]],
