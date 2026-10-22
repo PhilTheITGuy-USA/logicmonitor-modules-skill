@@ -293,6 +293,23 @@ Behaviour **[portal]**:
   byte-identical, lowercased keys.
 - Use your own ERI category so you merge with, rather than fight, the MAC keys already present
   (the priority then decides only the ERT, above).
+- **A vertex with several keys matches only a resource carrying all of them** **[portal,
+  2026-10-21]**. `lm.topo` joins a vertex's keys into one ID with `_`
+  (`keyA_keyB`), and the portal matches that ID against a resource only when the resource carries
+  every key — not any one. A node vertex given both a cluster-scoped and an IP key left the node
+  carrying only the IP key on the map with no edges. Give a vertex **one** key, chosen by a shared
+  helper, unless every resource it should match carries every key. `lm_lint_module.py` warns on a
+  vertex built from a multi-element list literal.
+- **Edges between two other resources are drawn** **[portal, 2026-10-22]**. A TopologySource on one
+  resource (a cluster's token holder) emitted an edge from a second node's resource to a guest's
+  resource; the map drew it, though neither end was the resource running the module. So one
+  TopologySource can draw a whole cluster, provided every vertex matches.
+- **A resource wins over an instance carrying the same key** **[portal, 2026-10-22]**. A guest that
+  was its own resource *and* an instance (with an instance-level ERI) on another node's resource
+  got its edge from its real node to the resource. An instance vertex on its own is drawn with
+  edges to the resource holding the instance and no other (spike: a cluster vertex carried by one
+  node's instance was joined to that node only) — so a vertex that only an instance carries is
+  misdrawn when its edge comes from elsewhere.
 - Use a synthesised fallback key only for **permanent** absence (no NIC). On a transient read failure
   skip the edge — otherwise identity flips for one run.
 

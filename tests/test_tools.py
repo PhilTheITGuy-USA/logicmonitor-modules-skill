@@ -228,6 +228,16 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     # The ERT comes from the highest-priority ERI entry across all categories [portal]:
     # at priority 1 the built-in net.l2 entry (priority 2) keeps PhysicalServer.
     m["ERI type override below priority 3"] = (x, "priority")
+    # lm.topo joins a vertex's keys into one ID, and the portal then matches only a resource
+    # carrying every one of them [portal, 2026-10-21].
+    topo = load("Proxmox_VE_Topology.json")
+    one_key = "eri([pveTopoKey(clusterName, nodeName)])"
+    attrs = json.loads(topo["collectionAttrs"])
+    assert one_key in attrs["scriptgroovy"], "Topology fixture no longer carries " + one_key
+    attrs["scriptgroovy"] = attrs["scriptgroovy"].replace(
+        one_key, "eri([pveTopoKey(clusterName, nodeName), pveTopoKey(nodeName, null)])")
+    x = copy.deepcopy(topo); x["collectionAttrs"] = json.dumps(attrs)
+    m["topology vertex built from two keys"] = (x, "carrying all")
     return m
 
 
@@ -253,6 +263,10 @@ def main() -> int:
     expect("lint does not warn on the known-good ERI PropertySource's priority",
            r.returncode == 0 and not any(l.strip().startswith("WARN") and "priority" in l
                                          for l in r.stdout.splitlines()), r.stdout)
+
+    r = run(LINT + [str(GOOD / "Proxmox_VE_Topology.json")])
+    expect("lint does not warn on the known-good TopologySource's one-key vertices",
+           r.returncode == 0 and "carrying all" not in r.stdout, r.stdout)
 
     r = run(LINT + [str(BAD_INPUT)])
     expect("planted-bug eval input fails lint", r.returncode == 1 and r.stdout.count("ERROR") >= 5, r.stdout)

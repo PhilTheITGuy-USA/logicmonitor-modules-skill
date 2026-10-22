@@ -57,6 +57,12 @@ Published modules don't ask users to hand-set a flag on every resource. Pattern:
   credential and prints `system.categories=<Product>` plus useful facts (version, clustered).
 - Completely silent (exit 0, no output) on non-targets, missing credentials and every error path.
 - Every other module: `AppliesTo: hasCategory("<Product>")`, optionally `&& vendor.clustered == "true"`.
+- **A PropertySource can add a category but never remove one** **[portal, 2026-10-21]**. Once
+  `addCategory_<Product>` has set it, the category stays when the PropertySource later goes silent
+  (its credential removed, the host repurposed), so every module keeps applying and failing there,
+  and its old instances stay. Document the manual removal step for anything that moves the
+  credential, or design the category to follow something set explicitly (a NetScan, an operator)
+  rather than inferred.
 - Net effect: **setting the credential property on a resource is the on-switch.**
 - Optional / expensive modules: gate on an explicit property (`&& vendor.topology.enabled == "true"`)
   rather than shipping them on by default.
@@ -84,7 +90,7 @@ only vertices that match a resource's ERI or an instance's (`predef.externalReso
 does), so objects that are only instances can be mapped **[portal, 2026-10-19]**. An ERI
 PropertySource that must change a resource's ERT needs priority 3 or more: the type comes from the
 highest-priority entry across all categories, and the built-in `net.l2` entry is priority 2
-**[portal, 2026-10-19]**. See `collector-scripting.md` §9 for mechanics. Topology fan-out (per-VM config reads) is O(instances) —
+**[portal, 2026-10-19]**. A vertex carries **one** key: lm.topo joins several into one ID the portal matches only against a resource carrying all of them **[portal, 2026-10-21]**. An edge between two resources other than the one running the TopologySource is drawn, and a resource wins over an instance with the same key **[portal, 2026-10-22]**. See `collector-scripting.md` §9 for mechanics. Topology fan-out (per-VM config reads) is O(instances) —
 hourly interval.
 
 ## 8. Local testing
