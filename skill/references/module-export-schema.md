@@ -130,6 +130,12 @@ Line `type`: `line`, `stack`, `area`. `datapointName` is the short datapoint `na
 `##WILDVALUE##.` key. The Proxmox suite ships without module graphs (dashboards instead), so these
 shapes are unverified here.
 
+**`multiInstance` is fixed when a DataSource is created** **[portal, 2026-10-22]**. Importing a
+module that flips it over an existing one fails with "Field value cannot be modified" — the portal
+names no field. The only path is to delete the old module (and its instance history) and import
+anew; dashboards that referenced it need re-importing too. Decide single- vs multi-instance before
+first release, and give an upgrade note when it must change.
+
 ## 3. Active Discovery block **[portal]**
 
 ```json
