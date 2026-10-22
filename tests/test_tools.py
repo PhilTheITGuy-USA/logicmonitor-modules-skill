@@ -98,6 +98,10 @@ def module_mutations() -> dict[str, dict]:
     m["technicalNotes over 4096 characters"] = x
     x = copy.deepcopy(nodes); x["description"] = "x" * 4097
     m["description over 4096 characters"] = x
+    # Instance grouping by instance-level property is the pair groupMethod "ilp" +
+    # groupExpr <property> [portal export, 2026-10-22]; ilp with no property groups nothing.
+    x = copy.deepcopy(nodes); x["activeDiscovery"]["groupMethod"] = "ilp"
+    m["groupMethod ilp without groupExpr"] = x
     return m
 
 
@@ -211,6 +215,9 @@ def module_must_pass() -> dict[str, dict]:
     m["minimal DiagnosticSource"] = other_module(11, script=groovy)
     x = copy.deepcopy(load("Proxmox_VE_Topology.json")); x["technicalNotes"] = "x" * 4096
     m["technicalNotes of exactly 4096 characters"] = x
+    x = copy.deepcopy(nodes)
+    x["activeDiscovery"].update(groupMethod="ilp", groupExpr="auto.pve_node")
+    m["instances grouped by auto.pve_node (ilp)"] = x
     return m
 
 
@@ -238,6 +245,10 @@ def module_warns() -> dict[str, tuple[dict, str]]:
         one_key, "eri([pveTopoKey(clusterName, nodeName), pveTopoKey(nodeName, null)])")
     x = copy.deepcopy(topo); x["collectionAttrs"] = json.dumps(attrs)
     m["topology vertex built from two keys"] = (x, "carrying all")
+    # AD properties are stored as auto.<key>; a bare name groups nothing.
+    x = copy.deepcopy(load("Proxmox_VE_Nodes.json"))
+    x["activeDiscovery"].update(groupMethod="ilp", groupExpr="pve_node")
+    m["ilp groupExpr without the auto. prefix"] = (x, "auto.pve_node")
     return m
 
 

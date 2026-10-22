@@ -238,6 +238,16 @@ def check_active_discovery(module: dict, report: Report) -> None:
         if ad.get(flag):
             report.error(f"activeDiscovery.{flag} is true -- an outage that makes discovery "
                          f"fail or return nothing will delete instances and their history")
+    # Grouping by an instance-level property is groupMethod "ilp" plus the property in
+    # groupExpr, as a portal export of a hand-grouped module carries it [portal, 2026-10-22].
+    if ad.get("groupMethod") == "ilp":
+        expr = ad.get("groupExpr")
+        if not (isinstance(expr, str) and expr.strip()):
+            report.error("activeDiscovery.groupMethod is 'ilp' with no groupExpr -- name the "
+                         "instance property to group by (e.g. 'auto.<key>')")
+        elif not expr.startswith(("auto.", "system.")):
+            report.warn(f"activeDiscovery.groupExpr {expr!r}: discovery properties are stored as "
+                        f"'auto.{expr}', so a bare name groups nothing unless it is set by hand")
     interval = ad.get("discoveryInterval")
     if ad and interval is not None and interval not in DISCOVERY_INTERVALS:
         report.error(f"activeDiscovery.discoveryInterval is {interval!r}; the portal takes "
