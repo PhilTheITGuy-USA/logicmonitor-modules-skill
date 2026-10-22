@@ -162,6 +162,15 @@ properties discovery emits (`auto.*`), with `groupMethod` set to group by one of
 `"filters": []` / `"groupMethod": "none"` and document in `technicalNotes` which properties operators
 can filter on. All filters must match (AND) — when instances go missing, check the filters first.
 
+**Grouping instances by a property** **[portal export, 2026-10-22]**: `"groupMethod": "ilp"`
+(Instance Level Property) with `"groupExpr": "auto.<key>"` — the stored name of a property
+discovery emits, `auto.` prefix included, or nothing is grouped. Each discovery run regroups: an
+instance whose property changes (a VM migrating to another host) moves to the new group and keeps
+its history, since its wildvalue is unchanged. Use it for readability wherever a resource carries
+many instances per parent object (guests, disks or services per host); a property with one instance
+per value gains nothing. `lm_lint_module.py` errors on `ilp` without `groupExpr` and warns on a
+name without `auto.`.
+
 ## 4. PropertySource **[LM export, portal]**
 
 ```json
