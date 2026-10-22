@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 1543b58), all 18 modules and both
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 744ba94), all 18 modules and both
 dashboards imported and collecting in a real portal. They must lint with zero errors.
 
 Known-bad input: each mutation below reintroduces one defect that fails silently in a
@@ -238,11 +238,11 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     # lm.topo joins a vertex's keys into one ID, and the portal then matches only a resource
     # carrying every one of them [portal, 2026-10-21].
     topo = load("Proxmox_VE_Topology.json")
-    one_key = "eri([pveTopoKey(clusterName, nodeName)])"
+    one_key = "eri([pveTopoNodeVertexKey(clusterName, nodeName, nodeIps[nodeName])])"
     attrs = json.loads(topo["collectionAttrs"])
     assert one_key in attrs["scriptgroovy"], "Topology fixture no longer carries " + one_key
     attrs["scriptgroovy"] = attrs["scriptgroovy"].replace(
-        one_key, "eri([pveTopoKey(clusterName, nodeName), pveTopoKey(nodeName, null)])")
+        one_key, "eri([pveTopoNodeVertexKey(clusterName, nodeName, nodeIps[nodeName]), pveTopoKey(clusterName, nodeName)])")
     x = copy.deepcopy(topo); x["collectionAttrs"] = json.dumps(attrs)
     m["topology vertex built from two keys"] = (x, "carrying all")
     # AD properties are stored as auto.<key>; a bare name groups nothing.
