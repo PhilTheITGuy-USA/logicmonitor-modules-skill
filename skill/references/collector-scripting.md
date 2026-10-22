@@ -306,10 +306,14 @@ Behaviour **[portal]**:
   TopologySource can draw a whole cluster, provided every vertex matches.
 - **A resource wins over an instance carrying the same key** **[portal, 2026-10-22]**. A guest that
   was its own resource *and* an instance (with an instance-level ERI) on another node's resource
-  got its edge from its real node to the resource. An instance vertex on its own is drawn with
-  edges to the resource holding the instance and no other (spike: a cluster vertex carried by one
-  node's instance was joined to that node only) — so a vertex that only an instance carries is
-  misdrawn when its edge comes from elsewhere.
+  got its edge from its real node to the resource.
+- **An instance vertex takes edges from other resources too — at least for a guest** **[portal,
+  2026-10-22]**. A container with no resource, carried only as an instance (with instance-level
+  ERI) on node A's resource, was drawn under node B, where it runs, from A's TopologySource. So a
+  cluster's guests need no resources of their own to be drawn under the right host. One
+  counter-observation is unexplained: a *cluster* vertex carried by an instance on node A was drawn
+  joined to A only, not to node B — don't rely on an instance vertex for an object that several
+  resources should share.
 - Use a synthesised fallback key only for **permanent** absence (no NIC). On a transient read failure
   skip the edge — otherwise identity flips for one run.
 
