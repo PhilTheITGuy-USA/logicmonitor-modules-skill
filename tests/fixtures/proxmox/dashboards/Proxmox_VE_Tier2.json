@@ -7,7 +7,7 @@
     }
   ],
   "name": "Proxmox VE Infrastructure",
-  "description": "Infrastructure metrics for Proxmox VE: Ceph cluster and per-OSD health, backup coverage, certificate and subscription expiry, replication jobs, physical disk SMART and wear, and node service state.",
+  "description": "Infrastructure metrics for Proxmox VE: Ceph cluster and per-OSD health, backups, certificate and subscription expiry, replication jobs, physical disk SMART and wear, and node service state.",
   "overwriteGroupFields": false,
   "widgetsConfigVersion": 2,
   "type": "dashboard",
@@ -261,28 +261,28 @@
           "counters": [],
           "dataPoints": [
             {
-              "dataPointName": "GuestsNotBackedUp",
+              "dataPointName": "NotCovered",
               "instanceName": "*",
-              "dataSourceFullName": "Proxmox VE Backup Coverage (Proxmox_VE_BackupCoverage)",
-              "name": "GuestsNotBackedUp",
+              "dataSourceFullName": "Proxmox VE Backups (Proxmox_VE_Backups)",
+              "name": "NotCovered",
               "aggregateFunction": "SUM",
               "deviceGroupFullPath": "##defaultResourceGroup##",
               "deviceDisplayName": "*"
             },
             {
-              "dataPointName": "VMsNotBackedUp",
+              "dataPointName": "FailedSinceLastBackup",
               "instanceName": "*",
-              "dataSourceFullName": "Proxmox VE Backup Coverage (Proxmox_VE_BackupCoverage)",
-              "name": "VMsNotBackedUp",
+              "dataSourceFullName": "Proxmox VE Backups (Proxmox_VE_Backups)",
+              "name": "FailedSinceLastBackup",
               "aggregateFunction": "SUM",
               "deviceGroupFullPath": "##defaultResourceGroup##",
               "deviceDisplayName": "*"
             },
             {
-              "dataPointName": "ContainersNotBackedUp",
+              "dataPointName": "LastBackupSizeGB",
               "instanceName": "*",
-              "dataSourceFullName": "Proxmox VE Backup Coverage (Proxmox_VE_BackupCoverage)",
-              "name": "ContainersNotBackedUp",
+              "dataSourceFullName": "Proxmox VE Backups (Proxmox_VE_Backups)",
+              "name": "LastBackupSizeGB",
               "aggregateFunction": "SUM",
               "deviceGroupFullPath": "##defaultResourceGroup##",
               "deviceDisplayName": "*"
@@ -290,7 +290,7 @@
           ],
           "bigNumberItems": [
             {
-              "dataPointName": "GuestsNotBackedUp",
+              "dataPointName": "NotCovered",
               "useCommaSeparators": false,
               "bottomLabel": "",
               "rounding": 0,
@@ -299,28 +299,28 @@
               "colorThresholds": null
             },
             {
-              "dataPointName": "VMsNotBackedUp",
+              "dataPointName": "FailedSinceLastBackup",
               "useCommaSeparators": false,
               "bottomLabel": "",
               "rounding": 0,
               "position": 2,
-              "rightLabel": "VMs Not Backed Up",
+              "rightLabel": "Failed Since Last Backup",
               "colorThresholds": null
             },
             {
-              "dataPointName": "ContainersNotBackedUp",
+              "dataPointName": "LastBackupSizeGB",
               "useCommaSeparators": false,
               "bottomLabel": "",
-              "rounding": 0,
+              "rounding": 1,
               "position": 3,
-              "rightLabel": "Containers Not Backed Up",
+              "rightLabel": "Latest Backups, GB",
               "colorThresholds": null
             }
           ]
         },
         "displaySettings": {},
-        "name": "Backup Coverage",
-        "description": "Guests covered by no backup job. Coverage only: whether the jobs succeed is not something this module can see.",
+        "name": "Backups",
+        "description": "Totals across every guest: guests no backup job covers, guests whose backup has failed since their last good one, and the size of each guest's latest backup added up (Proxmox Backup Server runs log no size). Per guest and per job, see Proxmox VE Backups on the resource holding the API token.",
         "theme": "newSolidDarkBlue",
         "interval": 3,
         "type": "bigNumber",

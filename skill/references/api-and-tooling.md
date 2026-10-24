@@ -57,6 +57,11 @@ Implements LMv1 for you. Most useful cmdlets for module work:
   **not** show whether datapoints parse — a module can pass Test Script and record No Data.
 - Resource → instance → **Raw Data** tab shows what was actually recorded. Use **Poll Now** rather than
   waiting out a long interval; a module not yet due looks identical to a broken one.
+- **Poll Now shows values but stores none** **[portal, 2026-10-25]**. Raw Data's table and every
+  dashboard widget read only stored data, which appears at the module's first *scheduled*
+  collection — up to one full interval after import. A freshly imported 60-minute module with good
+  Poll Now output, an empty Raw Data table and blank widgets is waiting, not broken. To see stored
+  data sooner, shorten the interval in the portal for the test and set it back afterwards.
 - Resource → **Info** shows properties, including `system.categories` set by PropertySources.
 - Collector debug console (`!groovy`, `!adlist`, `!tlist` etc.) — see below for how to reach it.
 

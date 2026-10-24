@@ -135,8 +135,10 @@ Nothing about a Collector is needed to test most of a suite:
 There are three layers, and each proves something different:
 1. **Local** (build checks, compile, mock harness) — proves parsing and output shape against your
    fixtures, not the real API's shape and not how the portal parses module JSON.
-2. **Portal import** — proves the JSON is accepted and, with Raw Data / Poll Now, that datapoints
-   actually record. Only this layer catches post-processor, reserved-name and schema-type defects.
+2. **Portal import** — proves the JSON is accepted; Poll Now shows that each datapoint parses, and
+   a row in Raw Data after the first scheduled collection that it actually records (Poll Now stores
+   nothing, so dashboards stay blank until then). Only this layer catches post-processor,
+   reserved-name and schema-type defects.
 3. **Live target** — proves the API shape, permissions, and real values (threshold directions!).
 
 Report which layers a change went through. Keep verification status in one place (a status table in
