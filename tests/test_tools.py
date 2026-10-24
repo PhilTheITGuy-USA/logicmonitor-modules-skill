@@ -249,6 +249,12 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(load("Proxmox_VE_Nodes.json"))
     x["activeDiscovery"].update(groupMethod="ilp", groupExpr="pve_node")
     m["ilp groupExpr without the auto. prefix"] = (x, "auto.pve_node")
+    # Stamped ERI keys outlive the module [portal, 2026-10-25]: an opt-in flag cannot turn
+    # topology off cleanly. The pinned fixtures predate the change and are still opt-in.
+    for name in ("addERI_Proxmox_VE.json", "Proxmox_VE_Topology.json"):
+        x = copy.deepcopy(load(name))
+        assert "pve.topology.enabled" in x["appliesTo"], name + " fixture is no longer opt-in"
+        m[f"opt-in topology module ({name})"] = (x, "opt-in via pve.topology.enabled")
     return m
 
 
@@ -274,6 +280,13 @@ def main() -> int:
     expect("lint does not warn on the known-good ERI PropertySource's priority",
            r.returncode == 0 and not any(l.strip().startswith("WARN") and "priority" in l
                                          for l in r.stdout.splitlines()), r.stdout)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        x = load("addERI_Proxmox_VE.json"); x["appliesTo"] = 'hasCategory("ProxmoxVE")'
+        path = Path(tmp) / "m.json"; path.write_text(json.dumps(x), encoding="utf-8")
+        r = run(LINT + [str(path)])
+        expect("lint does not call a topology module opt-in without a flag",
+               r.returncode == 0 and "opt-in" not in r.stdout, r.stdout)
 
     r = run(LINT + [str(GOOD / "Proxmox_VE_Topology.json")])
     expect("lint does not warn on the known-good TopologySource's one-key vertices",
