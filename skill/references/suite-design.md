@@ -63,9 +63,22 @@ Published modules don't ask users to hand-set a flag on every resource. Pattern:
   and its old instances stay. Document the manual removal step for anything that moves the
   credential, or design the category to follow something set explicitly (a NetScan, an operator)
   rather than inferred.
+- **The same holds for ERI keys** **[portal, 2026-10-25]**. Keys an ERI PropertySource stamped stay
+  in the resource's `predef.externalResourceID` after its AppliesTo stops matching (an opt-in flag
+  set to `false` for over 14 hours left both Proxmox node keys in place, across runs of the other
+  ERI modules on that resource, so no rebuild drops them), and the portal refuses to delete
+  that auto property. So **don't make an ERI module, or the TopologySource it serves, opt-in**: a
+  flag is an on-switch, never an off-switch. LogicMonitor's own topology modules have no flag
+  (`VMware_vSphere_VirtualMachine_Topology`, `addERI_ESXi`, `HyperV_Topology`, `addERI_HyperV`,
+  `addERI_Linux`, `addERI_Windows` all apply on what already marks the host as the product), so
+  stale keys arise only when a host stops being that product. Select the resources by something
+  intrinsic instead (a category, `system.virtualization`, a kernel string in `system.sysinfo`),
+  check the selector against guests that share the host's kernel (LXC containers do), and keep keys
+  specific enough that a stale one cannot match another object.
 - Net effect: **setting the credential property on a resource is the on-switch.**
-- Optional / expensive modules: gate on an explicit property (`&& vendor.topology.enabled == "true"`)
-  rather than shipping them on by default.
+- Optional / expensive modules: gate on an explicit property (`&& vendor.perguest.enabled == "true"`)
+  rather than shipping them on by default — DataSources only, never topology or ERI modules (above).
+  "Expensive" means O(instances) per poll; an hourly O(instances) read is not reason enough.
 
 ## 5. Where to put the credentials
 
