@@ -38,7 +38,7 @@ Import takes a module **type** — `datasources`, `propertyrules` (PropertySourc
 `diagnosticsources` — a conflict policy (`FORCE_OVERWRITE` / `ERROR`), and a `FieldsToPreserve`
 list: `NAME`, `APPLIES_TO_SCRIPT`, `COLLECTION_INTERVAL`, `ACTIVE_DISCOVERY_INTERVAL`,
 `MODULE_GROUP`, `DISPLAY_NAME`, `USE_WILD_VALUE_AS_UUID`, `DATAPOINT_ALERT_THRESHOLDS`, `TAGS`.
-Preserving customer-tuned thresholds and AppliesTo on re-import is what makes updates safe for users.
+Preserving end-user-tuned thresholds and AppliesTo on re-import is what makes updates safe for users.
 
 ## `Logic.Monitor` PowerShell module (community, PSGallery)
 

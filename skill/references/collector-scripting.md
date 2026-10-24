@@ -333,7 +333,7 @@ and exclude the snippet-dependent scripts from local compile/test.
 ## 11. Collector snippets: when and how
 
 Snippets are LogicMonitor-maintained Groovy libraries the Collector downloads from the portal and
-loads at run time **[LM recipes]**. Customers can't write or deploy their own.
+loads at run time **[LM recipes]**. End users can't write or deploy their own.
 
 **When to use them.** Two styles are both legitimate; choose per suite and record it:
 
