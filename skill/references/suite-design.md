@@ -47,7 +47,7 @@ then `break`) — it's O(1) even though it looks like fan-out.
 - Things that are physically bound (a disk, a cert, a service on a host) **should** include the host,
   or they collide across hosts.
 - Carry mutable context (current host, pool, tags) as **instance properties**, which may change freely.
-- Changing a scheme orphans every existing instance in every customer portal: change AD and collection
+- Changing a scheme orphans every existing instance in every end-user portal: change AD and collection
   together, and call it out in release notes.
 
 ## 4. Making the suite self-applying
@@ -141,8 +141,8 @@ There are three layers, and each proves something different:
 
 Report which layers a change went through. Keep verification status in one place (a status table in
 the design doc), not scattered. A module that hasn't been run against a real target says so in its
-`technicalNotes` as a customer-facing limitation ("Limitation: not yet tested with ...").
-`technicalNotes` and script comments ship to every customer: they explain what the module does and
+`technicalNotes` as an end-user-facing limitation ("Limitation: not yet tested with ...").
+`technicalNotes` and script comments ship to every end user: they explain what the module does and
 the constraints it honours, as current fact. Dates, spikes, design-doc references and verification
 history belong in the design doc.
 
@@ -172,7 +172,7 @@ used or life remaining), HA/failover behaviour, permission-filtered empties, sca
       resources get the credential, import order (modules → dashboards; ERI before topology),
       verification steps and a troubleshooting section keyed to symptoms
 - [ ] Imported and collecting in a real portal; dashboards export-counted
-- [ ] No secrets, portal names or customer data in scripts, fixtures or screenshots
+- [ ] No secrets, portal names or end-user data in scripts, fixtures or screenshots
 
 The exact LM Exchange submission flow (publishing from My Module Toolbox, review, locator codes) is
 portal-driven and changes; check current LogicMonitor docs rather than relying on this file.

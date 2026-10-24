@@ -31,7 +31,7 @@ Read these before writing any module. Each one shipped broken at least once.
    `useWildValueAsUniqueIdentifier: true`. Build it from the target's own durable id, never from
    something that moves (the host a VM currently runs on). Fold it to `[A-Za-z0-9_-]`: spaces, `:`,
    `=`, `\`, `#` are illegal, and `.` is ambiguous in BatchScript output. Changing a wildvalue scheme
-   later orphans every instance and its history in every customer portal.
+   later orphans every instance and its history in every end-user portal.
 3. **Exit non-zero on failure; never zero-fill.** `return 0` on success; on any API/config failure
    write the reason to `System.err` and `return 2`. A non-zero exit keeps existing instances through
    an outage. Returning 0 with zeros produces confident wrong data. Pair this with
