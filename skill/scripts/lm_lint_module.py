@@ -432,21 +432,6 @@ def check_eri_priority(text: str, report: Report) -> None:
                     f"or more (its keys still merge into the ID)")
 
 
-# An opt-in clause on a topology module: keys an ERI PropertySource stamped stay in
-# predef.externalResourceID after it stops applying, and the portal refuses to delete them
-# [portal, 2026-10-25], so a flag can turn the map on but never cleanly off. LogicMonitor's own
-# topology and addERI_* modules carry no such flag [LM's published exports].
-OPT_IN_CLAUSE = re.compile(r'\b([\w.]+\.enabled)\s*==\s*"true"')
-
-
-def check_topology_opt_in(module: dict, what: str, report: Report) -> None:
-    match = OPT_IN_CLAUSE.search(module.get("appliesTo") or "")
-    if match:
-        report.warn(f"{what} is opt-in via {match.group(1)}: turning it off leaves the ERI keys "
-                    f"already stamped, which the portal will not delete -- LogicMonitor's own "
-                    f"topology modules apply on what marks the host as the product instead")
-
-
 def check_propertysource(module: dict, scripts: dict[str, tuple[str, str]],
                          report: Report) -> None:
     if module.get("type") != 5:
@@ -466,7 +451,6 @@ def check_propertysource(module: dict, scripts: dict[str, tuple[str, str]],
     text = scripts.get("script", ("groovy", ""))[1]
     if eri:
         check_eri_priority(text, report)
-        check_topology_opt_in(module, "ERI PropertySource", report)
     if not eri:
         # A PropertySource's properties are stored as auto.<key> [portal, LM docs]; the only
         # system.* it can set is system.categories [LM docs].
@@ -520,7 +504,6 @@ def check_topologysource(module: dict, scripts: dict[str, tuple[str, str]],
         report.warn("topology output is not produced via lm.topo generateTopology -- hand-written "
                     "topology output means inventing a format")
     check_vertex_keys(text, report)
-    check_topology_opt_in(module, "TopologySource", report)
 
 
 # A vertex built from a list literal: eriPreProcessor([...], ...) or a wrapper such as eri([...]).

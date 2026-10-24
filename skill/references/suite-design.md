@@ -140,8 +140,11 @@ There are three layers, and each proves something different:
 3. **Live target** — proves the API shape, permissions, and real values (threshold directions!).
 
 Report which layers a change went through. Keep verification status in one place (a status table in
-the design doc), not scattered. A module that hasn't been run against a real target carries an
-`UNVERIFIED` paragraph in its `technicalNotes` naming what is unproven.
+the design doc), not scattered. A module that hasn't been run against a real target says so in its
+`technicalNotes` as a customer-facing limitation ("Limitation: not yet tested with ...").
+`technicalNotes` and script comments ship to every customer: they explain what the module does and
+the constraints it honours, as current fact. Dates, spikes, design-doc references and verification
+history belong in the design doc.
 
 Things only a live environment shows: threshold **direction** (e.g. whether a "wearout" field is life
 used or life remaining), HA/failover behaviour, permission-filtered empties, scale.
