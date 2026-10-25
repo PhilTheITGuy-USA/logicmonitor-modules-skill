@@ -60,6 +60,11 @@ CATCH_RETURN_ZERO = re.compile(r"catch\s*\([^)]*\)\s*\{[^{}]*?return\s+0\b", re.
 THRESHOLD = re.compile(r"^\s*(>|>=|<|<=|=|==|!=)\s*-?[\d.]+(\s+-?[\d.]+){0,2}\s*$")
 PASCAL = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 MODULE_NAME = re.compile(r"^[A-Za-z0-9]+(_[A-Za-z0-9]+)+$")
+# Graph vocabularies seen in LogicMonitor's own VMware_ESXi_VirtualMachinePerformance export.
+GRAPH_COLORS = {"blue", "green", "orange", "red", "teal", "fuchsia", "navy", "olive", "maroon",
+                "aqua", "lime", "yellow", "gray", "black", "orange2", "red1", "silver", "Auto"}
+GRAPH_LINE_TYPES = {"line", "area", "stack"}
+GRAPH_CONSOLIDATION = {"average", "max"}
 # End-user text pointing at the script's stderr. On exit 0 the portal shows no stderr in Poll
 # Now or Test Script [portal, 2026-10-24], so a reader sent there finds nothing.
 STDERR_POINTER = re.compile(r"\b(collection|discovery)\s+(task\s+)?log\b|\berrOutput\b|\bstderr\b", re.I)
@@ -342,6 +347,7 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
                      "instance identity, so instances can be re-created and lose history")
 
     check_active_discovery(module, report)
+    check_graphs(module, report)
 
     names: list[str] = []
     for dp in datapoints:
@@ -417,6 +423,38 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
             "emit.instance" not in discovery:
         report.warn("discovery prints no '####' property separator -- fine for the minimal "
                     "'wildvalue##name' form, but instance properties need it")
+
+
+def check_graphs(module: dict, report: Report) -> None:
+    declared = {dp.get("name") for dp in module.get("datapoints") or []}
+    graphs = module.get("graphs")
+    if len(declared) > 4 and not graphs:
+        report.warn(f"no graphs -- the portal then plots all {len(declared)} datapoints on one "
+                    f"chart; split them into graphs of related datapoints")
+    for kind in ("graphs", "overviewGraphs"):
+        for graph in module.get(kind) or []:
+            title = graph.get("title") or graph.get("name")
+            aliases = set()
+            for gdp in graph.get("datapoints") or []:
+                aliases.add(gdp.get("name"))
+                if gdp.get("datapointName") not in declared:
+                    report.error(f"{kind} {title!r} reads datapoint {gdp.get('datapointName')!r}, "
+                                 f"which the module does not declare -- the line draws nothing")
+                if gdp.get("consolidationFn") not in GRAPH_CONSOLIDATION:
+                    report.warn(f"{kind} {title!r} consolidationFn {gdp.get('consolidationFn')!r} "
+                                f"is not one LM's exports use")
+            aliases |= {v.get("name") for v in graph.get("virtualDatapoints") or []}
+            for line in graph.get("lines") or []:
+                if line.get("datapointName") not in aliases:
+                    report.error(f"{kind} {title!r} line {line.get('datapointName')!r} names no graph "
+                                 f"datapoint alias or virtual datapoint -- lines refer to the "
+                                 f"graph's own datapoints[].name, not the module datapoint")
+                if line.get("color") not in GRAPH_COLORS:
+                    report.warn(f"{kind} {title!r} colour {line.get('color')!r} is not one LM's "
+                                f"exports use")
+                if line.get("type") not in GRAPH_LINE_TYPES:
+                    report.warn(f"{kind} {title!r} line type {line.get('type')!r} is not line, "
+                                f"area or stack")
 
 
 # emitEri('<category>', <priority>, <keys>, <ERT>, ...) -- the ERT as a literal or a variable.

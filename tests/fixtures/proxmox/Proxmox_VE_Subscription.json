@@ -80,6 +80,113 @@
       "interpretExpr": "##WILDVALUE##.DaysSinceLastCheck"
     }
   ],
+  "graphs": [
+    {
+      "name": "Subscription State",
+      "title": "Subscription State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Active",
+          "datapointName": "Active",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Active",
+          "legend": "Active",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Days Until Due",
+      "title": "Days Until Due",
+      "verticalLabel": "days",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "DaysUntilDue",
+          "datapointName": "DaysUntilDue",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DaysUntilDue",
+          "legend": "Days left",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Days Since Last Check",
+      "title": "Days Since Last Check",
+      "verticalLabel": "days",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "DaysSinceLastCheck",
+          "datapointName": "DaysSinceLastCheck",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DaysSinceLastCheck",
+          "legend": "Since key last validated",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Sockets Covered",
+      "title": "Sockets Covered",
+      "verticalLabel": "sockets",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "Sockets",
+          "datapointName": "Sockets",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Sockets",
+          "legend": "Covered by the key",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

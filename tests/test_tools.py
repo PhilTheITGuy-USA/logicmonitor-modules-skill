@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 68dde78), all 18 modules and both
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 3445ea4), all 18 modules and both
 dashboards imported and collecting in a real portal. They must lint with zero errors.
 
 Known-bad input: each mutation below reintroduces one defect that fails silently in a
@@ -102,6 +102,12 @@ def module_mutations() -> dict[str, dict]:
     # groupExpr <property> [portal export, 2026-10-22]; ilp with no property groups nothing.
     x = copy.deepcopy(nodes); x["activeDiscovery"]["groupMethod"] = "ilp"
     m["groupMethod ilp without groupExpr"] = x
+    # Graph lines refer to the graph's own datapoint aliases, which read module datapoints
+    # [LM export, portal 2026-10-24]: a broken link at either layer draws nothing.
+    x = copy.deepcopy(nodes); x["graphs"][0]["datapoints"][0]["datapointName"] = "NoSuchDatapoint"
+    m["graph reads an undeclared datapoint"] = x
+    x = copy.deepcopy(nodes); x["graphs"][0]["lines"][0]["datapointName"] = "NoSuchAlias"
+    m["graph line names no graph datapoint"] = x
     return m
 
 
@@ -255,6 +261,9 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     dp = next(d for d in x["datapoints"] if d["name"] == "Failed")
     dp["alertBody"] += " The error text is in this module's collection task log."
     m["alert body pointing at the collection log"] = (x, "stderr")
+    # Without graphs the portal plots every datapoint on one chart [portal, 2026-10-24].
+    x = copy.deepcopy(load("Proxmox_VE_Ceph.json")); del x["graphs"]
+    m["DataSource with many datapoints and no graphs"] = (x, "no graphs")
     return m
 
 

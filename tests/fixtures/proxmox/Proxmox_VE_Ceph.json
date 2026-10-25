@@ -312,5 +312,335 @@
       "description": "Ceph monitors currently in quorum. A cluster that loses monitor quorum is unavailable regardless of OSD state.",
       "interpretExpr": "MonitorsInQuorum"
     }
+  ],
+  "graphs": [
+    {
+      "name": "Health",
+      "title": "Health",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "HealthOK",
+          "datapointName": "HealthOK",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HealthWarn",
+          "datapointName": "HealthWarn",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HealthError",
+          "datapointName": "HealthError",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "CephAvailable",
+          "datapointName": "CephAvailable",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "HealthOK",
+          "legend": "OK",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HealthWarn",
+          "legend": "Warning",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HealthError",
+          "legend": "Error",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "CephAvailable",
+          "legend": "Status readable",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Health Checks",
+      "title": "Health Checks",
+      "verticalLabel": "checks",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "HealthChecks",
+          "datapointName": "HealthChecks",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "HealthChecks",
+          "legend": "Active checks",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "OSDs",
+      "title": "OSDs",
+      "verticalLabel": "OSDs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "OSDsTotal",
+          "datapointName": "OSDsTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsUp",
+          "datapointName": "OSDsUp",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsIn",
+          "datapointName": "OSDsIn",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsDown",
+          "datapointName": "OSDsDown",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsOut",
+          "datapointName": "OSDsOut",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "OSDsTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsUp",
+          "legend": "Up",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsIn",
+          "legend": "In",
+          "color": "teal",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsDown",
+          "legend": "Down",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsOut",
+          "legend": "Out",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Placement Groups",
+      "title": "Placement Groups",
+      "verticalLabel": "PGs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "PGsTotal",
+          "datapointName": "PGsTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PGsClean",
+          "datapointName": "PGsClean",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PGsNotClean",
+          "datapointName": "PGsNotClean",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "PGsTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PGsClean",
+          "legend": "Clean",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PGsNotClean",
+          "legend": "Not clean",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Raw Capacity",
+      "title": "Raw Capacity",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "UsedBytes",
+          "datapointName": "UsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "FreeSpace",
+          "datapointName": "FreeSpace",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Capacity",
+          "datapointName": "Capacity",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "FreeSpace",
+          "legend": "Free",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Capacity",
+          "legend": "Total",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Raw Capacity Used",
+      "title": "Raw Capacity Used",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Monitors",
+      "title": "Monitors",
+      "verticalLabel": "monitors",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 7,
+      "datapoints": [
+        {
+          "name": "MonitorsTotal",
+          "datapointName": "MonitorsTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MonitorsInQuorum",
+          "datapointName": "MonitorsInQuorum",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MonitorsTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MonitorsInQuorum",
+          "legend": "In quorum",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
   ]
 }

@@ -129,6 +129,179 @@
       "interpretExpr": "##WILDVALUE##.UpTimeSeconds"
     }
   ],
+  "graphs": [
+    {
+      "name": "Node Status",
+      "title": "Node Status",
+      "verticalLabel": "1 = online",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Status",
+          "datapointName": "Status",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Status",
+          "legend": "Online",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "CPU Usage",
+      "title": "CPU Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "CPUUsagePercent",
+          "datapointName": "CPUUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUUsagePercent",
+          "legend": "CPU",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "CPUs",
+      "title": "CPUs",
+      "verticalLabel": "CPUs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "CPUCount",
+          "datapointName": "CPUCount",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUCount",
+          "legend": "Logical CPUs",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Memory",
+      "title": "Memory",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "MemoryUsedBytes",
+          "datapointName": "MemoryUsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryCapacityBytes",
+          "datapointName": "MemoryCapacityBytes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MemoryUsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MemoryCapacityBytes",
+          "legend": "Total",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Memory Usage",
+      "title": "Memory Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "MemoryUsagePercent",
+          "datapointName": "MemoryUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MemoryUsagePercent",
+          "legend": "Memory",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Uptime",
+      "title": "Uptime",
+      "verticalLabel": "seconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "UpTimeSeconds",
+          "datapointName": "UpTimeSeconds",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UpTimeSeconds",
+          "legend": "Since boot",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

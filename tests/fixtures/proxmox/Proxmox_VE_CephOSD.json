@@ -187,6 +187,226 @@
       "interpretExpr": "##WILDVALUE##.ApplyLatencyMs"
     }
   ],
+  "graphs": [
+    {
+      "name": "OSD State",
+      "title": "OSD State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Up",
+          "datapointName": "Up",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDIn",
+          "datapointName": "OSDIn",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "NoOutFlagSet",
+          "datapointName": "NoOutFlagSet",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Up",
+          "legend": "Up",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDIn",
+          "legend": "In",
+          "color": "teal",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "NoOutFlagSet",
+          "legend": "noout flag set",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Used",
+      "title": "Used",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Capacity",
+      "title": "Capacity",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "UsedBytes",
+          "datapointName": "UsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Capacity",
+          "datapointName": "Capacity",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Capacity",
+          "legend": "Total",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Latency",
+      "title": "Latency",
+      "verticalLabel": "milliseconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "CommitLatencyMs",
+          "datapointName": "CommitLatencyMs",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "ApplyLatencyMs",
+          "datapointName": "ApplyLatencyMs",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CommitLatencyMs",
+          "legend": "Commit",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "ApplyLatencyMs",
+          "legend": "Apply",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Weight",
+      "title": "Weight",
+      "verticalLabel": "weight",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "CrushWeight",
+          "datapointName": "CrushWeight",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Reweight",
+          "datapointName": "Reweight",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CrushWeight",
+          "legend": "CRUSH weight",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Reweight",
+          "legend": "Reweight",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Placement Groups",
+      "title": "Placement Groups",
+      "verticalLabel": "PGs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "PlacementGroups",
+          "datapointName": "PlacementGroups",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "PlacementGroups",
+          "legend": "Mapped to this OSD",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

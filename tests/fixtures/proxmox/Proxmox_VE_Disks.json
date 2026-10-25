@@ -127,6 +127,124 @@
       "interpretExpr": "##WILDVALUE##.LifeRemainingPercent"
     }
   ],
+  "graphs": [
+    {
+      "name": "Disk State",
+      "title": "Disk State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "SmartHealthOK",
+          "datapointName": "SmartHealthOK",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "SmartHealthKnown",
+          "datapointName": "SmartHealthKnown",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Mounted",
+          "datapointName": "Mounted",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "LifeRemainingKnown",
+          "datapointName": "LifeRemainingKnown",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SmartHealthOK",
+          "legend": "SMART healthy",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "SmartHealthKnown",
+          "legend": "SMART verdict known",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Mounted",
+          "legend": "Mounted",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "LifeRemainingKnown",
+          "legend": "Wear reported",
+          "color": "teal",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "SSD Life Remaining",
+      "title": "SSD Life Remaining",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "LifeRemainingPercent",
+          "datapointName": "LifeRemainingPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "LifeRemainingPercent",
+          "legend": "Life remaining",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Size",
+      "title": "Size",
+      "verticalLabel": "GB",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "SizeGB",
+          "datapointName": "SizeGB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SizeGB",
+          "legend": "Capacity",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

@@ -251,6 +251,317 @@
       "interpretExpr": "KSMSharedBytes"
     }
   ],
+  "graphs": [
+    {
+      "name": "Load Average",
+      "title": "Load Average",
+      "verticalLabel": "load",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "LoadAverage1m",
+          "datapointName": "LoadAverage1m",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "LoadAverage5m",
+          "datapointName": "LoadAverage5m",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "LoadAverage15m",
+          "datapointName": "LoadAverage15m",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "LoadAverage1m",
+          "legend": "1 minute",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "LoadAverage5m",
+          "legend": "5 minutes",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "LoadAverage15m",
+          "legend": "15 minutes",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Load per Core",
+      "title": "Load per Core",
+      "verticalLabel": "load",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "LoadPerCore",
+          "datapointName": "LoadPerCore",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "LoadPerCore",
+          "legend": "1 minute, per core",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "IO Wait",
+      "title": "IO Wait",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "IOWaitPercent",
+          "datapointName": "IOWaitPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "IOWaitPercent",
+          "legend": "IO wait",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Swap",
+      "title": "Swap",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "SwapUsedBytes",
+          "datapointName": "SwapUsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "SwapCapacityBytes",
+          "datapointName": "SwapCapacityBytes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SwapUsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "SwapCapacityBytes",
+          "legend": "Total",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Swap Usage",
+      "title": "Swap Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "SwapUsagePercent",
+          "datapointName": "SwapUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SwapUsagePercent",
+          "legend": "Swap",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Root Filesystem",
+      "title": "Root Filesystem",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "RootFSUsedBytes",
+          "datapointName": "RootFSUsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "RootFSFreeSpace",
+          "datapointName": "RootFSFreeSpace",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "RootFSCapacity",
+          "datapointName": "RootFSCapacity",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "RootFSUsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "RootFSFreeSpace",
+          "legend": "Free",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "RootFSCapacity",
+          "legend": "Size",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Root Filesystem Usage",
+      "title": "Root Filesystem Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 7,
+      "datapoints": [
+        {
+          "name": "RootFSUsedPercent",
+          "datapointName": "RootFSUsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "RootFSUsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "KSM Shared Memory",
+      "title": "KSM Shared Memory",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 8,
+      "datapoints": [
+        {
+          "name": "KSMSharedBytes",
+          "datapointName": "KSMSharedBytes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "KSMSharedBytes",
+          "legend": "Reclaimed by KSM",
+          "color": "teal",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "CPU Topology",
+      "title": "CPU Topology",
+      "verticalLabel": "count",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 9,
+      "datapoints": [
+        {
+          "name": "CPUSockets",
+          "datapointName": "CPUSockets",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "CPUCores",
+          "datapointName": "CPUCores",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUSockets",
+          "legend": "Sockets",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "CPUCores",
+          "legend": "Cores per socket",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

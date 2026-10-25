@@ -110,6 +110,109 @@
       "interpretExpr": "##WILDVALUE##.HAError"
     }
   ],
+  "graphs": [
+    {
+      "name": "Guest State",
+      "title": "Guest State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Status",
+          "datapointName": "Status",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Locked",
+          "datapointName": "Locked",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Migrating",
+          "datapointName": "Migrating",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HAManaged",
+          "datapointName": "HAManaged",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HAError",
+          "datapointName": "HAError",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Status",
+          "legend": "Running",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Locked",
+          "legend": "Locked",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Migrating",
+          "legend": "Migrating",
+          "color": "teal",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HAManaged",
+          "legend": "HA managed",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HAError",
+          "legend": "HA error or fence",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Uptime",
+      "title": "Uptime",
+      "verticalLabel": "seconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "UpTimeSeconds",
+          "datapointName": "UpTimeSeconds",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UpTimeSeconds",
+          "legend": "Since start",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

@@ -386,6 +386,423 @@
       "interpretExpr": "MigrationsFailedLastHour"
     }
   ],
+  "graphs": [
+    {
+      "name": "Nodes",
+      "title": "Nodes",
+      "verticalLabel": "nodes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "NodesTotal",
+          "datapointName": "NodesTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "NodesOnline",
+          "datapointName": "NodesOnline",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "NodesOffline",
+          "datapointName": "NodesOffline",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "NodesExpected",
+          "datapointName": "NodesExpected",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "NodesTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "NodesOnline",
+          "legend": "Online",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "NodesOffline",
+          "legend": "Offline",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "NodesExpected",
+          "legend": "Expected",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Quorum Votes",
+      "title": "Quorum Votes",
+      "verticalLabel": "votes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "Votes",
+          "datapointName": "Votes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "ExpectedVotes",
+          "datapointName": "ExpectedVotes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Votes",
+          "legend": "Votes",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "ExpectedVotes",
+          "legend": "Expected",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Cluster State",
+      "title": "Cluster State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "Quorate",
+          "datapointName": "Quorate",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "ClusterConfigured",
+          "datapointName": "ClusterConfigured",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HAMasterPresent",
+          "datapointName": "HAMasterPresent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HAFencingArmed",
+          "datapointName": "HAFencingArmed",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Quorate",
+          "legend": "Quorate",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "ClusterConfigured",
+          "legend": "Cluster configured",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HAMasterPresent",
+          "legend": "HA master present",
+          "color": "teal",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HAFencingArmed",
+          "legend": "HA fencing armed",
+          "color": "navy",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Guests",
+      "title": "Guests",
+      "verticalLabel": "guests",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "GuestsTotal",
+          "datapointName": "GuestsTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "GuestsRunning",
+          "datapointName": "GuestsRunning",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "GuestsTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "GuestsRunning",
+          "legend": "Running",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "vCPU Allocation",
+      "title": "vCPU Allocation",
+      "verticalLabel": "vCPUs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "VCPUsAllocated",
+          "datapointName": "VCPUsAllocated",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "VCPUsCapacity",
+          "datapointName": "VCPUsCapacity",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "VCPUsAllocated",
+          "legend": "Allocated",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "VCPUsCapacity",
+          "legend": "Capacity",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Memory Allocation",
+      "title": "Memory Allocation",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "MemoryAllocatedBytes",
+          "datapointName": "MemoryAllocatedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryCapacityBytes",
+          "datapointName": "MemoryCapacityBytes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MemoryAllocatedBytes",
+          "legend": "Allocated",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MemoryCapacityBytes",
+          "legend": "Capacity",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Overcommit",
+      "title": "Overcommit",
+      "verticalLabel": "ratio",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 7,
+      "datapoints": [
+        {
+          "name": "VCPUOvercommitRatio",
+          "datapointName": "VCPUOvercommitRatio",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryOvercommitRatio",
+          "datapointName": "MemoryOvercommitRatio",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "VCPUOvercommitRatio",
+          "legend": "vCPU",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MemoryOvercommitRatio",
+          "legend": "Memory",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "HA Services",
+      "title": "HA Services",
+      "verticalLabel": "services",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 8,
+      "datapoints": [
+        {
+          "name": "HAServicesTotal",
+          "datapointName": "HAServicesTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HAServicesError",
+          "datapointName": "HAServicesError",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HAServicesRequestMismatch",
+          "datapointName": "HAServicesRequestMismatch",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "HAServicesTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HAServicesError",
+          "legend": "In error or fence",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HAServicesRequestMismatch",
+          "legend": "Not yet in requested state",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Migrations",
+      "title": "Migrations",
+      "verticalLabel": "migrations",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 9,
+      "datapoints": [
+        {
+          "name": "MigrationsRunning",
+          "datapointName": "MigrationsRunning",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MigrationsCompletedLastHour",
+          "datapointName": "MigrationsCompletedLastHour",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MigrationsFailedLastHour",
+          "datapointName": "MigrationsFailedLastHour",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MigrationsRunning",
+          "legend": "Running",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MigrationsCompletedLastHour",
+          "legend": "Completed, last hour",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MigrationsFailedLastHour",
+          "legend": "Failed, last hour",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

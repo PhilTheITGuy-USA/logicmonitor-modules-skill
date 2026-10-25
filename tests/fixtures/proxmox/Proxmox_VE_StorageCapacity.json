@@ -112,6 +112,124 @@
       "interpretExpr": "##WILDVALUE##.Shared"
     }
   ],
+  "graphs": [
+    {
+      "name": "Capacity",
+      "title": "Capacity",
+      "verticalLabel": "GB",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "UsedGB",
+          "datapointName": "UsedGB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "FreeGB",
+          "datapointName": "FreeGB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "CapacityGB",
+          "datapointName": "CapacityGB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedGB",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "FreeGB",
+          "legend": "Free",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "CapacityGB",
+          "legend": "Size",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Used",
+      "title": "Used",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Storage State",
+      "title": "Storage State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "Status",
+          "datapointName": "Status",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Shared",
+          "datapointName": "Shared",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Status",
+          "legend": "Available",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Shared",
+          "legend": "Shared",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

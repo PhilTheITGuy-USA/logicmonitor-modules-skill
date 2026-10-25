@@ -67,6 +67,87 @@
       "interpretExpr": "##WILDVALUE##.PublicKeyBits"
     }
   ],
+  "graphs": [
+    {
+      "name": "Days Until Expiry",
+      "title": "Days Until Expiry",
+      "verticalLabel": "days",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "DaysUntilExpiry",
+          "datapointName": "DaysUntilExpiry",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DaysUntilExpiry",
+          "legend": "Days left",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Expired",
+      "title": "Expired",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "Expired",
+          "datapointName": "Expired",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Expired",
+          "legend": "Expired",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Key Size",
+      "title": "Key Size",
+      "verticalLabel": "bits",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "PublicKeyBits",
+          "datapointName": "PublicKeyBits",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "PublicKeyBits",
+          "legend": "Public key",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

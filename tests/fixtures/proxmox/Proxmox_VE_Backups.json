@@ -140,6 +140,175 @@
       "interpretExpr": "##WILDVALUE##.FailedSinceLastBackup"
     }
   ],
+  "graphs": [
+    {
+      "name": "Last Backup Age",
+      "title": "Last Backup Age",
+      "verticalLabel": "hours",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "LastBackupAgeHours",
+          "datapointName": "LastBackupAgeHours",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "LastBackupAgeHours",
+          "legend": "Since newest good backup",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Next Scheduled Run",
+      "title": "Next Scheduled Run",
+      "verticalLabel": "hours",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "HoursUntilNextRun",
+          "datapointName": "HoursUntilNextRun",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "HoursUntilNextRun",
+          "legend": "Until next run",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Backup Size",
+      "title": "Backup Size",
+      "verticalLabel": "GB",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "LastBackupSizeGB",
+          "datapointName": "LastBackupSizeGB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "LastBackupSizeGB",
+          "legend": "Newest backup",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Volumes",
+      "title": "Volumes",
+      "verticalLabel": "volumes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "IncludedVolumes",
+          "datapointName": "IncludedVolumes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "ExcludedVolumes",
+          "datapointName": "ExcludedVolumes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "IncludedVolumes",
+          "legend": "Included",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "ExcludedVolumes",
+          "legend": "Excluded",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Backup State",
+      "title": "Backup State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "FailedSinceLastBackup",
+          "datapointName": "FailedSinceLastBackup",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "NotCovered",
+          "datapointName": "NotCovered",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "JobEnabled",
+          "datapointName": "JobEnabled",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "FailedSinceLastBackup",
+          "legend": "Failed since last backup",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "NotCovered",
+          "legend": "Not covered by a job",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "JobEnabled",
+          "legend": "Job enabled",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

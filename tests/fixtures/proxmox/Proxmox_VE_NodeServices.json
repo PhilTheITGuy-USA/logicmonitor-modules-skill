@@ -80,6 +80,71 @@
       "interpretExpr": "##WILDVALUE##.Installed"
     }
   ],
+  "graphs": [
+    {
+      "name": "Service State",
+      "title": "Service State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Running",
+          "datapointName": "Running",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Failed",
+          "datapointName": "Failed",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Enabled",
+          "datapointName": "Enabled",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Installed",
+          "datapointName": "Installed",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Running",
+          "legend": "Running",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Failed",
+          "legend": "Failed",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Enabled",
+          "legend": "Enabled at boot",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Installed",
+          "legend": "Installed",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

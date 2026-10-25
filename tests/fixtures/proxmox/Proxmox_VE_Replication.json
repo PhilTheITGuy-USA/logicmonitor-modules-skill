@@ -112,6 +112,137 @@
       "interpretExpr": "##WILDVALUE##.DurationSeconds"
     }
   ],
+  "graphs": [
+    {
+      "name": "Job State",
+      "title": "Job State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Failed",
+          "datapointName": "Failed",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Running",
+          "datapointName": "Running",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Disabled",
+          "datapointName": "Disabled",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Failed",
+          "legend": "Last run failed",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Running",
+          "legend": "Running",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Disabled",
+          "legend": "Disabled",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Consecutive Failures",
+      "title": "Consecutive Failures",
+      "verticalLabel": "failures",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "FailCount",
+          "datapointName": "FailCount",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "FailCount",
+          "legend": "In a row",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Replica Age",
+      "title": "Replica Age",
+      "verticalLabel": "seconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "SecondsSinceLastSync",
+          "datapointName": "SecondsSinceLastSync",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SecondsSinceLastSync",
+          "legend": "Since last good sync",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Run Duration",
+      "title": "Run Duration",
+      "verticalLabel": "seconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "DurationSeconds",
+          "datapointName": "DurationSeconds",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DurationSeconds",
+          "legend": "Last run",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",

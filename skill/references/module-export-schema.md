@@ -110,25 +110,63 @@ observed in a portal here.
 - Every datapoint should feed something — a graph, an alert, a dashboard. Description includes the
   unit and, for status codes, the mapping.
 
-### Graphs and overview graphs **[LM recipes]**
+### Graphs and overview graphs **[LM export, portal]**
 
-`graphs` (per instance) and `overviewGraphs` (one line per instance, across all instances) share
-one shape; overview datapoints add `aggregateMethod` (`sum` for counts, `average` for comparable
-measures, `min`/`max` for bounds) and set `"aggregated": false` to keep a line per instance with
-`legend` `##INSTANCE##`:
+**Always ship `graphs`.** A DataSource with none gets the portal's default view: every datapoint on
+one chart, unreadable past four or five lines and meaningless when a 0/1 state shares an axis with
+a byte count **[portal, 2026-10-24]**. Split the datapoints into graphs of *related* values on
+*one unit*: states, percentages, byte sizes, counts, rates and latencies each get their own. The
+shapes below are copied from LogicMonitor's own `VMware_ESXi_VirtualMachinePerformance` export (15
+graphs, 7 overview graphs); a 9-graph DataSource built to them imported and rendered as intended.
+
+`graphs` — one chart per instance, on the instance's Graphs tab:
 
 ```json
-{"name": "CPU by node", "title": "CPU by node", "verticalLabel": "%", "min": 0,
- "timeScale": "1day", "displayPriority": 1, "aggregated": false, "scale1024": false, "rigid": false,
- "lines": [{"datapointName": "CPUUsagePercent", "legend": "##INSTANCE##", "color": "blue",
-            "type": "line", "isVirtual": false}],
- "datapoints": [{"name": "CPUUsagePercent", "datapointName": "CPUUsagePercent",
-                 "aggregateMethod": "average", "consolidationFn": "average"}]}
+{"name": "Memory", "title": "Memory", "verticalLabel": "bytes", "min": 0,
+ "rigid": false, "scale1024": true, "timeScale": "1day", "displayPriority": 2,
+ "datapoints": [{"name": "Used",  "datapointName": "MemoryUsedBytes",     "consolidationFn": "average"},
+                {"name": "Total", "datapointName": "MemoryCapacityBytes", "consolidationFn": "average"}],
+ "lines": [{"datapointName": "Used",  "legend": "Used",  "color": "blue", "type": "line", "isVirtual": false},
+           {"datapointName": "Total", "legend": "Total", "color": "gray", "type": "line", "isVirtual": false}]}
 ```
 
-Line `type`: `line`, `stack`, `area`. `datapointName` is the short datapoint `name`, never the
-`##WILDVALUE##.` key. The Proxmox suite ships without module graphs (dashboards instead), so these
-shapes are unverified here.
+- **Two layers of names.** `datapoints[].datapointName` is the module datapoint; `datapoints[].name`
+  is a graph-local alias, and `lines[].datapointName` refers to that **alias** (or to a virtual
+  datapoint's name). LM's export mostly sets alias = datapoint name; keep them equal unless you need
+  the same datapoint twice. Never the `##WILDVALUE##.` key.
+- **Keys:** graph `name`, `title`, `verticalLabel`, `min`, `rigid`, `scale1024`, `timeScale`,
+  `displayPriority`, `datapoints`, `lines`, optional `max` and `virtualDatapoints`. Line `datapointName`,
+  `legend`, `color`, `type`, `isVirtual`. Graph datapoint `name`, `datapointName`, `consolidationFn`.
+- **Values seen in LM's export:** `type` `line` / `area` / `stack`; `consolidationFn` `average` /
+  `max`; `timeScale` `1day` / `1hour`; `color` `blue`, `green`, `orange`, `red`, `teal`, `fuchsia`,
+  `navy`, `olive`, `maroon`, `aqua`, `lime`, `yellow`, `gray`, `black`, `orange2`, `red1`, and
+  `silver` / `Auto` (overview graphs). Use nothing else.
+- **`max` with `rigid: true`** pins the axis: `100` for a percentage, `1` for a 0/1 state. Without
+  `max`, leave `rigid: false` so the axis follows the data.
+- **`scale1024: true` only for raw bytes**, so the axis reads KiB/MiB/GiB. Leave it false for values
+  already in decimal MB/GB, or the axis rescales a figure that is already scaled.
+- **`displayPriority`** orders the graphs (1 first). Put the graph an operator looks at first — state,
+  or utilisation — at the top.
+- **Virtual datapoints** compute a line from others: `"virtualDatapoints": [{"name": "CPUPercent",
+  "expr": "CpuUsage/100"}]` plus a line with that `datapointName` and `"isVirtual": true`. The `expr`
+  operands are graph datapoint aliases.
+- Colour by meaning, consistently across the suite: good/up/online green, failed/error/down red,
+  warning/degraded orange, totals and capacities gray, the main measure blue.
+
+`overviewGraphs` — one chart across all instances of the module on a resource (the "Top 10" view).
+Same shape plus `"aggregated": false`, an `aggregateMethod` on each graph datapoint (`sum` in LM's
+export; `average` for comparable measures **[LM recipes]**), and a line legend of `##INSTANCE##` with
+`color` `Auto` so each instance gets its own colour.
+
+**How to choose the graphs.** List the datapoints with their units, then group:
+1. 0/1 states of the same object → one "State" graph, `max` 1, each flag its own colour.
+2. Each percentage → its own graph, `max` 100 — or several on one graph only when they measure the
+   same thing (CPU, memory and disk % of one guest do not).
+3. A used figure with its total (and free) → one graph in that unit; the total in gray.
+4. Paired rates (read/write, rx/tx) → one graph. Load averages 1/5/15 → one graph.
+5. Anything left over with its own unit (uptime, days to expiry, key size) → a graph of its own.
+A datapoint that duplicates another in a different unit (`SizeBytes` beside `SizeGB`) need not be
+plotted. Aim for ≤ 5 lines per graph.
 
 **`multiInstance` is fixed when a DataSource is created** **[portal, 2026-10-22]**. Importing a
 module that flips it over an existing one fails with "Field value cannot be modified" — the portal
@@ -239,5 +277,10 @@ Hand-editing export JSON invites drift. A small build step pays for itself:
   - `batchscript` ⇒ `multiInstance`; `multiInstance` ⇒ AD script;
   - reserved datapoint names;
   - bracket balance in assembled scripts;
-  - required keys per module type, reported as validation errors naming the file.
+  - required keys per module type, reported as validation errors naming the file;
+  - every graph line names a declared datapoint, and every graph key, colour and line type is one
+    LM's exports use (§2). Let the definition carry only `title`, `verticalLabel`, an optional
+    `max` / `scale1024` and `lines` of datapoint + legend (+ colour); the build fills in the rest —
+    `name` = `title`, `min` 0, `rigid` = has `max`, `timeScale` `1day`, `displayPriority` from
+    the order, alias = datapoint name, `consolidationFn` `average`, `isVirtual` false.
 - Wipe the output directory on each build so a renamed or removed script can't linger and be imported.

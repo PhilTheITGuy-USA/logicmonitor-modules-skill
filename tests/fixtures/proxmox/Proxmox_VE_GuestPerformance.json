@@ -219,6 +219,279 @@
       "interpretExpr": "##WILDVALUE##.MemoryHostMB"
     }
   ],
+  "graphs": [
+    {
+      "name": "CPU Usage",
+      "title": "CPU Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "CPUUsagePercent",
+          "datapointName": "CPUUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUUsagePercent",
+          "legend": "CPU",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "vCPUs",
+      "title": "vCPUs",
+      "verticalLabel": "vCPUs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "CPUCount",
+          "datapointName": "CPUCount",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUCount",
+          "legend": "Allocated",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Memory",
+      "title": "Memory",
+      "verticalLabel": "MB",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "MemoryUsedMB",
+          "datapointName": "MemoryUsedMB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryHostMB",
+          "datapointName": "MemoryHostMB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryCapacityMB",
+          "datapointName": "MemoryCapacityMB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MemoryUsedMB",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MemoryHostMB",
+          "legend": "Host footprint",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MemoryCapacityMB",
+          "legend": "Allocated",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Memory Usage",
+      "title": "Memory Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "MemoryUsagePercent",
+          "datapointName": "MemoryUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MemoryUsagePercent",
+          "legend": "Memory",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Root Disk",
+      "title": "Root Disk",
+      "verticalLabel": "GB",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "DiskUsedGB",
+          "datapointName": "DiskUsedGB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "DiskCapacityGB",
+          "datapointName": "DiskCapacityGB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DiskUsedGB",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "DiskCapacityGB",
+          "legend": "Size",
+          "color": "gray",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Root Disk Usage",
+      "title": "Root Disk Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "DiskUsagePercent",
+          "datapointName": "DiskUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DiskUsagePercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Network Throughput",
+      "title": "Network Throughput",
+      "verticalLabel": "MB/sec",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 7,
+      "datapoints": [
+        {
+          "name": "DataRateRxMB",
+          "datapointName": "DataRateRxMB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "DataRateTxMB",
+          "datapointName": "DataRateTxMB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DataRateRxMB",
+          "legend": "Received",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "DataRateTxMB",
+          "legend": "Sent",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Disk Throughput",
+      "title": "Disk Throughput",
+      "verticalLabel": "MB/sec",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 8,
+      "datapoints": [
+        {
+          "name": "DiskReadRateMB",
+          "datapointName": "DiskReadRateMB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "DiskWriteRateMB",
+          "datapointName": "DiskWriteRateMB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DiskReadRateMB",
+          "legend": "Read",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "DiskWriteRateMB",
+          "legend": "Written",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
   "activeDiscovery": {
     "enabled": true,
     "discoveryMethod": "ad_script",
