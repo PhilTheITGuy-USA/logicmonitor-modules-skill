@@ -87,6 +87,13 @@ try {
 
 - `return 0` success; `return 2` any API/config failure, reason on `System.err`. Non-zero makes LM
   keep existing instances through a transient outage. Never "handle" an outage with zeros.
+- **stderr is only seen on failure.** On exit 0 the portal shows no stderr: Poll Now and Test
+  Script both leave `errOutput` empty even when the script wrote to it **[portal, 2026-10-24]**.
+  Writing detail there (which guest failed, which health check fired) costs nothing and helps
+  anyone running the script on a Collector, but never tell end users to read it — not in
+  `technicalNotes`, a datapoint description or an alert body. Point them at the target's own UI
+  or log, where the full detail lives. `lm_lint_module.py` warns on text that mentions the
+  collection log, `errOutput` or stderr.
 - **Fan-out over sub-objects** (one call per node/host): filter to reachable ones first, then a
   per-item `try` that logs to `System.err` and continues, so one dead member doesn't blank the rest.
 - A fourth legitimate shape: **nothing to report** (feature not installed) → print nothing,

@@ -60,6 +60,9 @@ CATCH_RETURN_ZERO = re.compile(r"catch\s*\([^)]*\)\s*\{[^{}]*?return\s+0\b", re.
 THRESHOLD = re.compile(r"^\s*(>|>=|<|<=|=|==|!=)\s*-?[\d.]+(\s+-?[\d.]+){0,2}\s*$")
 PASCAL = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 MODULE_NAME = re.compile(r"^[A-Za-z0-9]+(_[A-Za-z0-9]+)+$")
+# End-user text pointing at the script's stderr. On exit 0 the portal shows no stderr in Poll
+# Now or Test Script [portal, 2026-10-24], so a reader sent there finds nothing.
+STDERR_POINTER = re.compile(r"\b(collection|discovery)\s+(task\s+)?log\b|\berrOutput\b|\bstderr\b", re.I)
 
 
 class Report:
@@ -173,6 +176,15 @@ def check_common(module: dict, report: Report) -> None:
         report.warn("no description")
     if not (module.get("appliesTo") or "").strip():
         report.error("empty appliesTo -- the module will apply to nothing")
+    texts = [("technicalNotes", module.get("technicalNotes") or "")]
+    for dp in module.get("datapoints") or []:
+        for field in ("description", "alertBody"):
+            texts.append((f"datapoint {dp.get('name')!r} {field}", dp.get(field) or ""))
+    for where, text in texts:
+        if STDERR_POINTER.search(text):
+            report.warn(f"{where} sends the reader to the script's stderr / collection log; on "
+                        f"exit 0 the portal shows no stderr, so point at the target's own UI or "
+                        f"log instead")
 
 
 def check_scripts(module: dict, scripts: dict[str, tuple[str, str]], kind: str,

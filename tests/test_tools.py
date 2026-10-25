@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ e6873b7), all 18 modules and both
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 415f055), all 18 modules and both
 dashboards imported and collecting in a real portal. They must lint with zero errors.
 
 Known-bad input: each mutation below reintroduces one defect that fails silently in a
@@ -249,6 +249,12 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(load("Proxmox_VE_Nodes.json"))
     x["activeDiscovery"].update(groupMethod="ilp", groupExpr="pve_node")
     m["ilp groupExpr without the auto. prefix"] = (x, "auto.pve_node")
+    # On exit 0 the portal shows no stderr [portal, 2026-10-24]: end-user text must not send
+    # the reader to the collection log.
+    x = copy.deepcopy(load("Proxmox_VE_Replication.json"))
+    dp = next(d for d in x["datapoints"] if d["name"] == "Failed")
+    dp["alertBody"] += " The error text is in this module's collection task log."
+    m["alert body pointing at the collection log"] = (x, "stderr")
     return m
 
 
@@ -278,6 +284,10 @@ def main() -> int:
     r = run(LINT + [str(GOOD / "Proxmox_VE_Topology.json")])
     expect("lint does not warn on the known-good TopologySource's one-key vertices",
            r.returncode == 0 and "carrying all" not in r.stdout, r.stdout)
+
+    r = run(LINT + good_modules)
+    expect("lint does not warn on the known-good modules' end-user text",
+           "collection log" not in r.stdout, r.stdout)
 
     r = run(LINT + [str(BAD_INPUT)])
     expect("planted-bug eval input fails lint", r.returncode == 1 and r.stdout.count("ERROR") >= 5, r.stdout)
