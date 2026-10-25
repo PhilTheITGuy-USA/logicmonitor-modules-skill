@@ -168,6 +168,17 @@ portal-reviewed, Proxmox suite]**:
 A datapoint that duplicates another in a different unit (`SizeBytes` beside `SizeGB`) need not be
 plotted. Aim for ≤ 5 lines per graph.
 
+**Give a percentage its weight through the instance name, not a graph line.** "72% used" means little
+without the size it is a share of, but a size line cannot share the % graph: on a 0-100 axis it is
+drawn off the scale, and an axis scaled to it flattens the % **[portal, 2026-10-24]**. Put the size
+where every graph of the instance already shows it — the Active Discovery display name for objects
+whose size is their identity (`local-lvm on node-a (1.8 TB)`, `osd.3 (4.0 TB)`), the description
+for objects where it would be noise in a list (a guest's root disk, a node's root filesystem). The
+display name also lands in dashboard legends that use `##INSTANCE##`. It costs nothing when discovery
+already reads the size, and history survives because the wildvalue, not the name, is the identity;
+the name follows a resize at the next discovery. Omit the size when the source reports none (an
+unavailable store reports 0), rather than printing "0 GB".
+
 **Colours must be told apart at a glance.** In the portal's legend and hover, `gray` beside `green`
 and `navy` beside `blue` read as the same colour **[portal, 2026-10-24]**; the same goes for the
 other near pairs (`teal`/`green`, `olive`/`green`, `lime`/`green`, `aqua`/`blue`, `maroon`/`red`,
