@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 1e5d786), all 18 modules and both
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 2e0237b), all 18 modules and both
 dashboards imported and collecting in a real portal. They must lint with zero errors.
 
 Known-bad input: each mutation below reintroduces one defect that fails silently in a

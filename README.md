@@ -28,7 +28,7 @@ skill/                       the installable skill -- the only part Claude Code 
   scripts/lm_dashboards.py   dashboard builder + validator (from LM's published exports)
 tests/
   test_tools.py              self-test for the two scripts: known-good, mutation, must-pass cases
-  fixtures/proxmox/          known-good exports (Proxmox-LogicModule @ 1e5d786, portal-verified)
+  fixtures/proxmox/          known-good exports (Proxmox-LogicModule @ 2e0237b, portal-verified)
 evals/
   evals.json                 test prompts for skill-vs-no-skill comparison
   inputs/                    files those prompts use
