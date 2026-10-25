@@ -65,6 +65,10 @@ GRAPH_COLORS = {"blue", "green", "orange", "red", "teal", "fuchsia", "navy", "ol
                 "aqua", "lime", "yellow", "gray", "black", "orange2", "red1", "silver", "Auto"}
 GRAPH_LINE_TYPES = {"line", "area", "stack"}
 GRAPH_CONSOLIDATION = {"average", "max"}
+# Colours that read as one in the portal's legend and hover. gray/green and navy/blue were seen
+# [portal, 2026-10-24]; the rest are the same hue at a different shade.
+CONFUSABLE_COLORS = [{"gray", "green", "teal", "olive", "lime", "silver"}, {"navy", "blue", "aqua"},
+                     {"red", "red1", "maroon"}, {"orange", "orange2", "yellow"}]
 # End-user text pointing at the script's stderr. On exit 0 the portal shows no stderr in Poll
 # Now or Test Script [portal, 2026-10-24], so a reader sent there finds nothing.
 STDERR_POINTER = re.compile(r"\b(collection|discovery)\s+(task\s+)?log\b|\berrOutput\b|\bstderr\b", re.I)
@@ -444,6 +448,14 @@ def check_graphs(module: dict, report: Report) -> None:
                     report.warn(f"{kind} {title!r} consolidationFn {gdp.get('consolidationFn')!r} "
                                 f"is not one LM's exports use")
             aliases |= {v.get("name") for v in graph.get("virtualDatapoints") or []}
+            colors = [line.get("color") for line in graph.get("lines") or [] if line.get("color") != "Auto"]
+            for dup in sorted({c for c in colors if colors.count(c) > 1}):
+                report.warn(f"{kind} {title!r} uses colour {dup!r} for two lines")
+            for family in CONFUSABLE_COLORS:
+                close = sorted(set(colors) & family)
+                if len(close) > 1:
+                    report.warn(f"{kind} {title!r} uses colours {close} together -- they read as "
+                                f"one colour in the portal; use blue, orange, green, red, fuchsia, black")
             for line in graph.get("lines") or []:
                 if line.get("datapointName") not in aliases:
                     report.error(f"{kind} {title!r} line {line.get('datapointName')!r} names no graph "

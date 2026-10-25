@@ -443,7 +443,7 @@
         {
           "datapointName": "NodesExpected",
           "legend": "Expected",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }
@@ -481,7 +481,7 @@
         {
           "datapointName": "ExpectedVotes",
           "legend": "Expected",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }
@@ -522,28 +522,28 @@
         {
           "datapointName": "Quorate",
           "legend": "Quorate",
-          "color": "blue",
+          "color": "green",
           "type": "line",
           "isVirtual": false
         },
         {
           "datapointName": "ClusterConfigured",
           "legend": "Cluster configured",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         },
         {
           "datapointName": "HAMasterPresent",
           "legend": "HA master present",
-          "color": "teal",
+          "color": "fuchsia",
           "type": "line",
           "isVirtual": false
         },
         {
           "datapointName": "HAFencingArmed",
           "legend": "HA fencing armed",
-          "color": "navy",
+          "color": "blue",
           "type": "line",
           "isVirtual": false
         }
@@ -620,7 +620,7 @@
         {
           "datapointName": "VCPUsCapacity",
           "legend": "Capacity",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }
@@ -658,7 +658,7 @@
         {
           "datapointName": "MemoryCapacityBytes",
           "legend": "Capacity",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }

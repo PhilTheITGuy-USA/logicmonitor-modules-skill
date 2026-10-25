@@ -225,7 +225,7 @@
         {
           "datapointName": "OSDIn",
           "legend": "In",
-          "color": "teal",
+          "color": "fuchsia",
           "type": "line",
           "isVirtual": false
         },
@@ -240,14 +240,41 @@
       "max": 1
     },
     {
+      "name": "Used",
+      "title": "Used",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
       "name": "Capacity",
       "title": "Capacity",
-      "verticalLabel": "bytes / %",
+      "verticalLabel": "bytes",
       "min": 0,
       "rigid": false,
       "scale1024": true,
       "timeScale": "1day",
-      "displayPriority": 2,
+      "displayPriority": 3,
       "datapoints": [
         {
           "name": "UsedBytes",
@@ -257,11 +284,6 @@
         {
           "name": "Capacity",
           "datapointName": "Capacity",
-          "consolidationFn": "average"
-        },
-        {
-          "name": "UsedPercent",
-          "datapointName": "UsedPercent",
           "consolidationFn": "average"
         }
       ],
@@ -276,14 +298,7 @@
         {
           "datapointName": "Capacity",
           "legend": "Total",
-          "color": "gray",
-          "type": "line",
-          "isVirtual": false
-        },
-        {
-          "datapointName": "UsedPercent",
-          "legend": "Used %",
-          "color": "navy",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }
@@ -297,7 +312,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 3,
+      "displayPriority": 4,
       "datapoints": [
         {
           "name": "CommitLatencyMs",
@@ -335,7 +350,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 4,
+      "displayPriority": 5,
       "datapoints": [
         {
           "name": "CrushWeight",
@@ -373,7 +388,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 5,
+      "displayPriority": 6,
       "datapoints": [
         {
           "name": "PlacementGroups",

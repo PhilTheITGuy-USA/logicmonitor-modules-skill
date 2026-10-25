@@ -157,7 +157,7 @@
         {
           "datapointName": "Disabled",
           "legend": "Disabled",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }

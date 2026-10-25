@@ -170,7 +170,7 @@
         {
           "datapointName": "SmartHealthKnown",
           "legend": "SMART verdict known",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         },
@@ -184,7 +184,7 @@
         {
           "datapointName": "LifeRemainingKnown",
           "legend": "Wear reported",
-          "color": "teal",
+          "color": "fuchsia",
           "type": "line",
           "isVirtual": false
         }

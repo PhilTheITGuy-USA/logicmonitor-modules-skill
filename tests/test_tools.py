@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ ed6286e), all 18 modules and both
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 19208bf), all 18 modules and both
 dashboards imported and collecting in a real portal. They must lint with zero errors.
 
 Known-bad input: each mutation below reintroduces one defect that fails silently in a
@@ -264,6 +264,11 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     # Without graphs the portal plots every datapoint on one chart [portal, 2026-10-24].
     x = copy.deepcopy(load("Proxmox_VE_Ceph.json")); del x["graphs"]
     m["DataSource with many datapoints and no graphs"] = (x, "no graphs")
+    # gray beside green read as one colour in the portal's legend [portal, 2026-10-24].
+    x = copy.deepcopy(load("Proxmox_VE_StorageCapacity.json"))
+    cap = next(g for g in x["graphs"] if g["title"] == "Capacity")
+    next(l for l in cap["lines"] if l["color"] == "black")["color"] = "gray"
+    m["graph colours gray and green together"] = (x, "read as")
     return m
 
 

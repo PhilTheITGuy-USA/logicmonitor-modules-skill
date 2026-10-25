@@ -149,28 +149,32 @@ graphs, 7 overview graphs); a 9-graph DataSource built to them imported and rend
 - **Virtual datapoints** compute a line from others: `"virtualDatapoints": [{"name": "CPUPercent",
   "expr": "CpuUsage/100"}]` plus a line with that `datapointName` and `"isVirtual": true`. The `expr`
   operands are graph datapoint aliases.
-- Colour by meaning, consistently across the suite: good/up/online green, failed/error/down red,
-  warning/degraded orange, totals and capacities gray, the main measure blue.
+- Colour by meaning, consistently across the suite, from colours that stay distinct (below).
 
 `overviewGraphs` — one chart across all instances of the module on a resource (the "Top 10" view).
 Same shape plus `"aggregated": false`, an `aggregateMethod` on each graph datapoint (`sum` in LM's
 export; `average` for comparable measures **[LM recipes]**), and a line legend of `##INSTANCE##` with
 `color` `Auto` so each instance gets its own colour.
 
-**How to choose the graphs: one graph per subject.** List the datapoints, then group them by what
-they describe, not by unit — operators read "everything about memory" in one place **[user
-preference, Proxmox suite]**:
+**How to choose the graphs.** List the datapoints with their units, then group **[user preference,
+portal-reviewed, Proxmox suite]**:
 1. 0/1 states of the same object → one "State" graph, `max` 1, each flag its own colour.
-2. Everything about one subject → one graph: memory used, total and used %; root disk used, size and
-   used %; swap; a storage pool's used, free, size and %; CPU % with the CPU count. Title it by the
-   subject ("Memory"), `verticalLabel` naming both units ("bytes / %"), no `max`, and give the % line
-   its own colour.
-3. Paired rates (read/write, rx/tx) → one graph. Load averages 1/5/15 → one graph.
-4. Anything left over with its own unit (uptime, days to expiry, key size) → a graph of its own.
-A graph has one axis, so a % line beside values in the thousands sits low on it; the legend and
-hover still give its value, and the subject grouping is what operators asked for. A datapoint that
-duplicates another in a different unit (`SizeBytes` beside `SizeGB`) need not be plotted. Aim for
-≤ 5 lines per graph.
+2. The absolute figures about one subject → one graph in their unit: memory used and total; root
+   disk used and size; a storage pool's used, free and size. Title it by the subject ("Memory").
+3. **Each percentage → a graph of its own**, `max` 100 ("Memory Usage"). Never put a % line on an
+   axis with bytes, MB or GB: one axis cannot read both, and the % line flattens against the floor.
+4. Paired rates (read/write, rx/tx) → one graph. Load averages 1/5/15 → one graph.
+5. Anything left over with its own unit (uptime, days to expiry, key size) → a graph of its own.
+A datapoint that duplicates another in a different unit (`SizeBytes` beside `SizeGB`) need not be
+plotted. Aim for ≤ 5 lines per graph.
+
+**Colours must be told apart at a glance.** In the portal's legend and hover, `gray` beside `green`
+and `navy` beside `blue` read as the same colour **[portal, 2026-10-24]**; the same goes for the
+other near pairs (`teal`/`green`, `olive`/`green`, `lime`/`green`, `aqua`/`blue`, `maroon`/`red`,
+`red1`/`red`, `orange2`/`orange`, `yellow`/`orange`, `silver`/`gray`, `black`/`navy`). Draw from a
+short set of far-apart colours — `blue`, `orange`, `green`, `red`, `fuchsia`, `black` — and never
+use one twice in a graph. That leaves meaning intact: main measure blue, good/free/up green,
+failed/down red, warning orange, totals and capacities black, anything else fuchsia.
 
 **`multiInstance` is fixed when a DataSource is created** **[portal, 2026-10-22]**. Importing a
 module that flips it over an existing one fails with "Field value cannot be modified" — the portal

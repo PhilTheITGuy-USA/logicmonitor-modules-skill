@@ -116,7 +116,7 @@
     {
       "name": "Capacity",
       "title": "Capacity",
-      "verticalLabel": "GB / %",
+      "verticalLabel": "GB",
       "min": 0,
       "rigid": false,
       "scale1024": false,
@@ -136,11 +136,6 @@
         {
           "name": "CapacityGB",
           "datapointName": "CapacityGB",
-          "consolidationFn": "average"
-        },
-        {
-          "name": "UsedPercent",
-          "datapointName": "UsedPercent",
           "consolidationFn": "average"
         }
       ],
@@ -162,18 +157,38 @@
         {
           "datapointName": "CapacityGB",
           "legend": "Size",
-          "color": "gray",
-          "type": "line",
-          "isVirtual": false
-        },
-        {
-          "datapointName": "UsedPercent",
-          "legend": "Used %",
-          "color": "navy",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }
       ]
+    },
+    {
+      "name": "Used",
+      "title": "Used",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
     },
     {
       "name": "Storage State",
@@ -183,7 +198,7 @@
       "rigid": true,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 2,
+      "displayPriority": 3,
       "datapoints": [
         {
           "name": "Status",
@@ -207,7 +222,7 @@
         {
           "datapointName": "Shared",
           "legend": "Shared",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }

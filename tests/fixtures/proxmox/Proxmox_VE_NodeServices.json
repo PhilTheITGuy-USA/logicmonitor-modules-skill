@@ -137,7 +137,7 @@
         {
           "datapointName": "Installed",
           "legend": "Installed",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         }

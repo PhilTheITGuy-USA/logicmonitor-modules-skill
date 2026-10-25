@@ -165,14 +165,14 @@
         {
           "datapointName": "Migrating",
           "legend": "Migrating",
-          "color": "teal",
+          "color": "fuchsia",
           "type": "line",
           "isVirtual": false
         },
         {
           "datapointName": "HAManaged",
           "legend": "HA managed",
-          "color": "gray",
+          "color": "black",
           "type": "line",
           "isVirtual": false
         },
