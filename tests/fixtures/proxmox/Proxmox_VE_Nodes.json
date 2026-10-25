@@ -158,11 +158,11 @@
       "max": 1
     },
     {
-      "name": "CPU Usage",
-      "title": "CPU Usage",
-      "verticalLabel": "%",
+      "name": "CPU",
+      "title": "CPU",
+      "verticalLabel": "% / CPUs",
       "min": 0,
-      "rigid": true,
+      "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
       "displayPriority": 2,
@@ -171,29 +171,7 @@
           "name": "CPUUsagePercent",
           "datapointName": "CPUUsagePercent",
           "consolidationFn": "average"
-        }
-      ],
-      "lines": [
-        {
-          "datapointName": "CPUUsagePercent",
-          "legend": "CPU",
-          "color": "blue",
-          "type": "line",
-          "isVirtual": false
-        }
-      ],
-      "max": 100
-    },
-    {
-      "name": "CPUs",
-      "title": "CPUs",
-      "verticalLabel": "CPUs",
-      "min": 0,
-      "rigid": false,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 3,
-      "datapoints": [
+        },
         {
           "name": "CPUCount",
           "datapointName": "CPUCount",
@@ -202,9 +180,16 @@
       ],
       "lines": [
         {
+          "datapointName": "CPUUsagePercent",
+          "legend": "Usage %",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
           "datapointName": "CPUCount",
           "legend": "Logical CPUs",
-          "color": "blue",
+          "color": "navy",
           "type": "line",
           "isVirtual": false
         }
@@ -213,12 +198,12 @@
     {
       "name": "Memory",
       "title": "Memory",
-      "verticalLabel": "bytes",
+      "verticalLabel": "bytes / %",
       "min": 0,
       "rigid": false,
       "scale1024": true,
       "timeScale": "1day",
-      "displayPriority": 4,
+      "displayPriority": 3,
       "datapoints": [
         {
           "name": "MemoryUsedBytes",
@@ -228,6 +213,11 @@
         {
           "name": "MemoryCapacityBytes",
           "datapointName": "MemoryCapacityBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryUsagePercent",
+          "datapointName": "MemoryUsagePercent",
           "consolidationFn": "average"
         }
       ],
@@ -245,35 +235,15 @@
           "color": "gray",
           "type": "line",
           "isVirtual": false
-        }
-      ]
-    },
-    {
-      "name": "Memory Usage",
-      "title": "Memory Usage",
-      "verticalLabel": "%",
-      "min": 0,
-      "rigid": true,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 5,
-      "datapoints": [
-        {
-          "name": "MemoryUsagePercent",
-          "datapointName": "MemoryUsagePercent",
-          "consolidationFn": "average"
-        }
-      ],
-      "lines": [
+        },
         {
           "datapointName": "MemoryUsagePercent",
-          "legend": "Memory",
-          "color": "blue",
+          "legend": "Used %",
+          "color": "navy",
           "type": "line",
           "isVirtual": false
         }
-      ],
-      "max": 100
+      ]
     },
     {
       "name": "Uptime",
@@ -283,7 +253,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 6,
+      "displayPriority": 4,
       "datapoints": [
         {
           "name": "UpTimeSeconds",

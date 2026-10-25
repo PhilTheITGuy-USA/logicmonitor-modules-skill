@@ -58,7 +58,7 @@ Read these before writing any module. Each one shipped broken at least once.
     display name or a datapoint and every widget pointing at it is discarded at import. Import the
     modules before the dashboard.
 11. **Ship `graphs` on every DataSource.** Without them the portal draws every datapoint on one
-    chart. Group related datapoints of one unit per graph, and remember a graph line names the graph's
+    chart. Give each subject (memory, root disk, CPU) one graph, and remember a graph line names the graph's
     own datapoint alias, not the module datapoint. Shape, vocabularies and a grouping recipe:
     `references/module-export-schema.md` §2.
 

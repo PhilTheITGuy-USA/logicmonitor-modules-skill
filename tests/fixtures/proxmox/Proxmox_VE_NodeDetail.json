@@ -358,7 +358,7 @@
     {
       "name": "Swap",
       "title": "Swap",
-      "verticalLabel": "bytes",
+      "verticalLabel": "bytes / %",
       "min": 0,
       "rigid": false,
       "scale1024": true,
@@ -373,6 +373,11 @@
         {
           "name": "SwapCapacityBytes",
           "datapointName": "SwapCapacityBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "SwapUsagePercent",
+          "datapointName": "SwapUsagePercent",
           "consolidationFn": "average"
         }
       ],
@@ -390,45 +395,25 @@
           "color": "gray",
           "type": "line",
           "isVirtual": false
+        },
+        {
+          "datapointName": "SwapUsagePercent",
+          "legend": "Used %",
+          "color": "navy",
+          "type": "line",
+          "isVirtual": false
         }
       ]
     },
     {
-      "name": "Swap Usage",
-      "title": "Swap Usage",
-      "verticalLabel": "%",
-      "min": 0,
-      "rigid": true,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 5,
-      "datapoints": [
-        {
-          "name": "SwapUsagePercent",
-          "datapointName": "SwapUsagePercent",
-          "consolidationFn": "average"
-        }
-      ],
-      "lines": [
-        {
-          "datapointName": "SwapUsagePercent",
-          "legend": "Swap",
-          "color": "blue",
-          "type": "line",
-          "isVirtual": false
-        }
-      ],
-      "max": 100
-    },
-    {
       "name": "Root Filesystem",
       "title": "Root Filesystem",
-      "verticalLabel": "bytes",
+      "verticalLabel": "bytes / %",
       "min": 0,
       "rigid": false,
       "scale1024": true,
       "timeScale": "1day",
-      "displayPriority": 6,
+      "displayPriority": 5,
       "datapoints": [
         {
           "name": "RootFSUsedBytes",
@@ -443,6 +428,11 @@
         {
           "name": "RootFSCapacity",
           "datapointName": "RootFSCapacity",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "RootFSUsedPercent",
+          "datapointName": "RootFSUsedPercent",
           "consolidationFn": "average"
         }
       ],
@@ -467,35 +457,15 @@
           "color": "gray",
           "type": "line",
           "isVirtual": false
-        }
-      ]
-    },
-    {
-      "name": "Root Filesystem Usage",
-      "title": "Root Filesystem Usage",
-      "verticalLabel": "%",
-      "min": 0,
-      "rigid": true,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 7,
-      "datapoints": [
-        {
-          "name": "RootFSUsedPercent",
-          "datapointName": "RootFSUsedPercent",
-          "consolidationFn": "average"
-        }
-      ],
-      "lines": [
+        },
         {
           "datapointName": "RootFSUsedPercent",
-          "legend": "Used",
-          "color": "blue",
+          "legend": "Used %",
+          "color": "navy",
           "type": "line",
           "isVirtual": false
         }
-      ],
-      "max": 100
+      ]
     },
     {
       "name": "KSM Shared Memory",
@@ -505,7 +475,7 @@
       "rigid": false,
       "scale1024": true,
       "timeScale": "1day",
-      "displayPriority": 8,
+      "displayPriority": 6,
       "datapoints": [
         {
           "name": "KSMSharedBytes",
@@ -531,7 +501,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 9,
+      "displayPriority": 7,
       "datapoints": [
         {
           "name": "CPUSockets",

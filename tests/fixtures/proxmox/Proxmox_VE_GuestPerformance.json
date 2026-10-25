@@ -221,11 +221,11 @@
   ],
   "graphs": [
     {
-      "name": "CPU Usage",
-      "title": "CPU Usage",
-      "verticalLabel": "%",
+      "name": "CPU",
+      "title": "CPU",
+      "verticalLabel": "% / vCPUs",
       "min": 0,
-      "rigid": true,
+      "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
       "displayPriority": 1,
@@ -234,29 +234,7 @@
           "name": "CPUUsagePercent",
           "datapointName": "CPUUsagePercent",
           "consolidationFn": "average"
-        }
-      ],
-      "lines": [
-        {
-          "datapointName": "CPUUsagePercent",
-          "legend": "CPU",
-          "color": "blue",
-          "type": "line",
-          "isVirtual": false
-        }
-      ],
-      "max": 100
-    },
-    {
-      "name": "vCPUs",
-      "title": "vCPUs",
-      "verticalLabel": "vCPUs",
-      "min": 0,
-      "rigid": false,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 2,
-      "datapoints": [
+        },
         {
           "name": "CPUCount",
           "datapointName": "CPUCount",
@@ -265,9 +243,16 @@
       ],
       "lines": [
         {
+          "datapointName": "CPUUsagePercent",
+          "legend": "Usage %",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
           "datapointName": "CPUCount",
           "legend": "Allocated",
-          "color": "blue",
+          "color": "navy",
           "type": "line",
           "isVirtual": false
         }
@@ -276,12 +261,12 @@
     {
       "name": "Memory",
       "title": "Memory",
-      "verticalLabel": "MB",
+      "verticalLabel": "MB / %",
       "min": 0,
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 3,
+      "displayPriority": 2,
       "datapoints": [
         {
           "name": "MemoryUsedMB",
@@ -296,6 +281,11 @@
         {
           "name": "MemoryCapacityMB",
           "datapointName": "MemoryCapacityMB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryUsagePercent",
+          "datapointName": "MemoryUsagePercent",
           "consolidationFn": "average"
         }
       ],
@@ -320,45 +310,25 @@
           "color": "gray",
           "type": "line",
           "isVirtual": false
+        },
+        {
+          "datapointName": "MemoryUsagePercent",
+          "legend": "Used %",
+          "color": "navy",
+          "type": "line",
+          "isVirtual": false
         }
       ]
     },
     {
-      "name": "Memory Usage",
-      "title": "Memory Usage",
-      "verticalLabel": "%",
-      "min": 0,
-      "rigid": true,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 4,
-      "datapoints": [
-        {
-          "name": "MemoryUsagePercent",
-          "datapointName": "MemoryUsagePercent",
-          "consolidationFn": "average"
-        }
-      ],
-      "lines": [
-        {
-          "datapointName": "MemoryUsagePercent",
-          "legend": "Memory",
-          "color": "blue",
-          "type": "line",
-          "isVirtual": false
-        }
-      ],
-      "max": 100
-    },
-    {
       "name": "Root Disk",
       "title": "Root Disk",
-      "verticalLabel": "GB",
+      "verticalLabel": "GB / %",
       "min": 0,
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 5,
+      "displayPriority": 3,
       "datapoints": [
         {
           "name": "DiskUsedGB",
@@ -368,6 +338,11 @@
         {
           "name": "DiskCapacityGB",
           "datapointName": "DiskCapacityGB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "DiskUsagePercent",
+          "datapointName": "DiskUsagePercent",
           "consolidationFn": "average"
         }
       ],
@@ -385,35 +360,15 @@
           "color": "gray",
           "type": "line",
           "isVirtual": false
-        }
-      ]
-    },
-    {
-      "name": "Root Disk Usage",
-      "title": "Root Disk Usage",
-      "verticalLabel": "%",
-      "min": 0,
-      "rigid": true,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 6,
-      "datapoints": [
-        {
-          "name": "DiskUsagePercent",
-          "datapointName": "DiskUsagePercent",
-          "consolidationFn": "average"
-        }
-      ],
-      "lines": [
+        },
         {
           "datapointName": "DiskUsagePercent",
-          "legend": "Used",
-          "color": "blue",
+          "legend": "Used %",
+          "color": "navy",
           "type": "line",
           "isVirtual": false
         }
-      ],
-      "max": 100
+      ]
     },
     {
       "name": "Network Throughput",
@@ -423,7 +378,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 7,
+      "displayPriority": 4,
       "datapoints": [
         {
           "name": "DataRateRxMB",
@@ -461,7 +416,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 8,
+      "displayPriority": 5,
       "datapoints": [
         {
           "name": "DiskReadRateMB",

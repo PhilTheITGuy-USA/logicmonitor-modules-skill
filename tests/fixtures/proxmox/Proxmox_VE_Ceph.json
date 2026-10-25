@@ -530,7 +530,7 @@
     {
       "name": "Raw Capacity",
       "title": "Raw Capacity",
-      "verticalLabel": "bytes",
+      "verticalLabel": "bytes / %",
       "min": 0,
       "rigid": false,
       "scale1024": true,
@@ -550,6 +550,11 @@
         {
           "name": "Capacity",
           "datapointName": "Capacity",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
           "consolidationFn": "average"
         }
       ],
@@ -574,35 +579,15 @@
           "color": "gray",
           "type": "line",
           "isVirtual": false
-        }
-      ]
-    },
-    {
-      "name": "Raw Capacity Used",
-      "title": "Raw Capacity Used",
-      "verticalLabel": "%",
-      "min": 0,
-      "rigid": true,
-      "scale1024": false,
-      "timeScale": "1day",
-      "displayPriority": 6,
-      "datapoints": [
-        {
-          "name": "UsedPercent",
-          "datapointName": "UsedPercent",
-          "consolidationFn": "average"
-        }
-      ],
-      "lines": [
+        },
         {
           "datapointName": "UsedPercent",
-          "legend": "Used",
-          "color": "blue",
+          "legend": "Used %",
+          "color": "navy",
           "type": "line",
           "isVirtual": false
         }
-      ],
-      "max": 100
+      ]
     },
     {
       "name": "Monitors",
@@ -612,7 +597,7 @@
       "rigid": false,
       "scale1024": false,
       "timeScale": "1day",
-      "displayPriority": 7,
+      "displayPriority": 6,
       "datapoints": [
         {
           "name": "MonitorsTotal",

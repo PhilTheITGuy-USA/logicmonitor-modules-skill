@@ -114,8 +114,7 @@ observed in a portal here.
 
 **Always ship `graphs`.** A DataSource with none gets the portal's default view: every datapoint on
 one chart, unreadable past four or five lines and meaningless when a 0/1 state shares an axis with
-a byte count **[portal, 2026-10-24]**. Split the datapoints into graphs of *related* values on
-*one unit*: states, percentages, byte sizes, counts, rates and latencies each get their own. The
+a byte count **[portal, 2026-10-24]**. Split the datapoints into graphs by subject (recipe below). The
 shapes below are copied from LogicMonitor's own `VMware_ESXi_VirtualMachinePerformance` export (15
 graphs, 7 overview graphs); a 9-graph DataSource built to them imported and rendered as intended.
 
@@ -158,15 +157,20 @@ Same shape plus `"aggregated": false`, an `aggregateMethod` on each graph datapo
 export; `average` for comparable measures **[LM recipes]**), and a line legend of `##INSTANCE##` with
 `color` `Auto` so each instance gets its own colour.
 
-**How to choose the graphs.** List the datapoints with their units, then group:
+**How to choose the graphs: one graph per subject.** List the datapoints, then group them by what
+they describe, not by unit — operators read "everything about memory" in one place **[user
+preference, Proxmox suite]**:
 1. 0/1 states of the same object → one "State" graph, `max` 1, each flag its own colour.
-2. Each percentage → its own graph, `max` 100 — or several on one graph only when they measure the
-   same thing (CPU, memory and disk % of one guest do not).
-3. A used figure with its total (and free) → one graph in that unit; the total in gray.
-4. Paired rates (read/write, rx/tx) → one graph. Load averages 1/5/15 → one graph.
-5. Anything left over with its own unit (uptime, days to expiry, key size) → a graph of its own.
-A datapoint that duplicates another in a different unit (`SizeBytes` beside `SizeGB`) need not be
-plotted. Aim for ≤ 5 lines per graph.
+2. Everything about one subject → one graph: memory used, total and used %; root disk used, size and
+   used %; swap; a storage pool's used, free, size and %; CPU % with the CPU count. Title it by the
+   subject ("Memory"), `verticalLabel` naming both units ("bytes / %"), no `max`, and give the % line
+   its own colour.
+3. Paired rates (read/write, rx/tx) → one graph. Load averages 1/5/15 → one graph.
+4. Anything left over with its own unit (uptime, days to expiry, key size) → a graph of its own.
+A graph has one axis, so a % line beside values in the thousands sits low on it; the legend and
+hover still give its value, and the subject grouping is what operators asked for. A datapoint that
+duplicates another in a different unit (`SizeBytes` beside `SizeGB`) need not be plotted. Aim for
+≤ 5 lines per graph.
 
 **`multiInstance` is fixed when a DataSource is created** **[portal, 2026-10-22]**. Importing a
 module that flips it over an existing one fails with "Field value cannot be modified" — the portal
