@@ -222,7 +222,12 @@ has no address (Proxmox ships no VIP).
     and a new property added; a property the run stops sending keeps its last value; categories
     are merged with what the resource has (one dropped from the output stays, one added by hand
     stays); a resource is added to the groups it is sent with and never taken out of old ones;
-    the display name follows every run, on the same resource (matched by hostname). So send
+    the display name follows every run, on the same resource (matched by hostname). **A new
+    hostname is a new resource**: a run that sent a changed hostname created a second resource
+    beside the first, without its properties or history; display names are unique, so
+    LogicMonitor named it `<hostname>#<collector id>`. Anything whose address can change (a VM on
+    DHCP) needs the script to find its existing resource by a stable id property, through the LM
+    API, and keep or update that resource's hostname rather than send the new one. So send
     every property on every run with an explicit value (`none`) rather than omitting it, never
     use a category for something that changes (use a property, and AppliesTo on its value), and
     emit only static groups whose membership never changes; group by anything mutable (pool,
