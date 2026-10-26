@@ -233,6 +233,31 @@ has no address (Proxmox ships no VIP).
     emit only static groups whose membership never changes; group by anything mutable (pool,
     tag, current host) with dynamic groups on a property. A static group that accumulates is an
     access-control leak, since permissions are granted by group;
+  - **a run that stops early shows only "Scanned: 0"**: the portal shows a NetScan script's
+    stderr nowhere. Run the same script in the Collector debug console (`!groovy`) to see why,
+    with the NetScan's properties set into `hostProps` first;
+  - `netscanProps` and `hostProps` are `com.santaba.common.util.ParamMap`, **not a
+    `java.util.Map`**: `get(key)`, `get(key, default)`, `set(key, value)`, no `put`, no
+    iteration. A closure parameter typed `Map` rejects it with a MissingMethodException that
+    shows only on a Collector -- test with a get/set-only stand-in;
+  - `lm.api` 0 is a factory, `lmApiSnippetFactory(props, http, lmDebug)`, needing a
+    `proto.http` 0 client (`httpSnippetFactory(props)`) and an `lm.debug` 1 logger
+    (`debugSnippetFactory(out, debug, log, context)`). Its client **only reads** (device lists,
+    lookups by name, hostname or property, `apiGetV2`): a NetScan cannot update a resource
+    through it. It reads `lmaccess.id` / `lmaccess.key` itself; the NetScan screen masks
+    `lmaccess.key` although it does not end in `.credential`;
+  - `lm.cache` 0's `cacheSnippetFactory(lmDebug, context)` gives `cacheSet(key, value, ttlSec)`,
+    `cacheGet(key)`, `cacheRemove(key)`, and a value set in one run is there in the next -- the
+    way a module keeps state between polls;
+- **An embedded script may not exceed 49,135 characters** ("groovyScript field cannot contain
+  more than 49135 characters", import API, 2026-10-26). A suite that prepends a shared preamble
+  reaches it fast: assemble each module with only the preamble functions its body reaches and
+  without comments, and check the length in the build. An embedded NetScan script is
+  recommended at 32 KB or less.
+- **Data that alerted stays alerted until a value returns inside the threshold.** No Data never
+  clears an alert, and an alert cannot be cleared by hand (acknowledging only marks it). A
+  module that stops collecting on purpose -- a standby, a feature switched off -- must report
+  one healthy poll first, or its open alerts stay forever.
   - "Criteria for updating Existing Resources" picks *which* resources a run may update (all
     matching, those this NetScan discovered (default), members of selected groups, those on
     selected Collectors, none), not how: the merge rules above hold under every option. Under
