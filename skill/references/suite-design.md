@@ -218,4 +218,19 @@ has no address (Proxmox ships no VIP).
     duplicates first, so a first look under-counts;
   - a resource deleted and then re-emitted comes back **with its old properties and categories**
     from Recently Deleted. To start clean, purge it from Recently Deleted too.
+  - **a re-run overwrites and adds, but never removes.** A changed property value is rewritten
+    and a new property added; a property the run stops sending keeps its last value; categories
+    are merged with what the resource has (one dropped from the output stays, one added by hand
+    stays); a resource is added to the groups it is sent with and never taken out of old ones;
+    the display name follows every run, on the same resource (matched by hostname). So send
+    every property on every run with an explicit value (`none`) rather than omitting it, never
+    use a category for something that changes (use a property, and AppliesTo on its value), and
+    emit only static groups whose membership never changes; group by anything mutable (pool,
+    tag, current host) with dynamic groups on a property. A static group that accumulates is an
+    access-control leak, since permissions are granted by group;
+  - "Criteria for updating Existing Resources" picks *which* resources a run may update (all
+    matching, those this NetScan discovered (default), members of selected groups, those on
+    selected Collectors, none), not how: the merge rules above hold under every option. Under
+    the default, a resource the NetScan did not create is never updated, so adopting existing
+    resources needs a wider option.
 
