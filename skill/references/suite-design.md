@@ -209,6 +209,10 @@ has no address (Proxmox ships no VIP).
     Add, and reach the script as `netscanProps`; a `.credential` value is masked there. Properties
     defined elsewhere in the portal also arrive (one the user never entered did); LM API
     credentials do not arrive unless entered;
+  - a property **cannot be saved empty** ("Properties cannot be empty" **[portal, 2026-10-26]**):
+    design every property so that *absent* means the default, treat an empty value as absent
+    anyway, and tell users to delete a property, not clear it. A debug-console copy that fills
+    `hostProps` must skip blank values too;
   - the group paths in each emitted `groupName` are created if missing;
   - "Exclude duplicate IP addresses: Matching any Monitored Resources" (the default) compares the
     emitted hostname *as written*: an entry whose hostname is an existing resource's IP is
