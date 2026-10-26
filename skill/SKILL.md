@@ -129,7 +129,7 @@ errors, and each defect class above makes the tools fail. A clean run is still n
 | `references/module-export-schema.md` | Producing or editing module JSON: DataSource, PropertySource (plain and ERI), TopologySource shapes; datapoint `type`/`dataType` enums, thresholds, alert bodies, `statusDisplayNames`, graphs/overview graphs, AD block and allowed intervals, reserved names |
 | `references/dashboards.md` | Building or debugging a dashboard export: widget key sets, the allowed value vocabularies (and the second, warn-only tier from LM's corpus), per-widget field shapes, `##INSTANCE##` vs `##HOSTNAME##`, unit scaling via RPN, why not the newer `table` widget |
 | `references/api-and-tooling.md` | Talking to a portal programmatically: REST v3, LMv1 HMAC signing, bearer tokens, module import API, the `Logic.Monitor` PowerShell module, running `!groovy` on a Collector, useful LogicMonitor GitHub repos |
-| `references/suite-design.md` | Planning a suite, cost tiers, instance-ID design, self-applying categories, topology/ERI identity, local test harness design, verification discipline, Exchange readiness checklist |
+| `references/suite-design.md` | Planning a suite, cost tiers, instance-ID design, self-applying categories, topology/ERI identity, local test harness design, verification discipline, Exchange readiness checklist, API-only resources and HostStatus (dead resources suppress alerts), Enhanced Script NetScan behaviour |
 
 When the user's repo already has its own CLAUDE.md or design record, that wins over this skill for
 project specifics; this skill supplies the platform knowledge underneath it.

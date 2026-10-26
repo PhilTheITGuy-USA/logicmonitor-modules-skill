@@ -11,6 +11,7 @@
 8. Local testing
 9. Verification discipline
 10. Exchange / Community readiness checklist
+11. Resources with no address of their own; Enhanced Script NetScans
 
 ## 1. Naming and module split
 
@@ -178,3 +179,43 @@ used or life remaining), HA/failover behaviour, permission-filtered empties, sca
 
 The exact LM Exchange submission flow (publishing from My Module Toolbox, review, locator codes) is
 portal-driven and changes; check current LogicMonitor docs rather than relying on this file.
+
+## 11. Resources with no address of their own; Enhanced Script NetScans
+
+Learned building a Proxmox suite whose cluster-level modules wanted a resource for a cluster that
+has no address (Proxmox ships no VIP).
+
+- **A resource must answer on its own address, or it is dead.** HostStatus's `idleInterval`
+  counts time since the Collector last got data *from the resource*: "Data collected by script
+  DataSources does not affect the value of the idleInterval datapoint"
+  ([HostStatus](https://www.logicmonitor.com/support/hoststatus-datasource)). A script module
+  collecting every minute on a resource with an unresolvable hostname left `heartbeat` frozen and
+  `idleInterval` climbing, and so did a `PingMulti-` instance per real address at 0% loss:
+  replies from other addresses do not count either **[portal, 2026-10-25]**.
+- **A dead resource silences itself.** "When a host goes down, LogicMonitor does not generate a new
+  alert (except HostStatus.)" and "All other existing alert notifications from the host are
+  suppressed" (same page). So never design an API-only "logical" resource (a cluster, a service
+  endpoint) with a hostname that does not answer: its script modules keep collecting, and every
+  alert they raise is held back. Disabling HostStatus does not help; LogicMonitor warns against
+  customising it. Put such modules on a resource that really answers (a VIP or proxy name if the
+  product has one, else a member, with a standby member that collects only while the first is
+  down).
+- **A borrowed address brings its own monitoring.** A loopback hostname (`127.0.0.x`) answers ping,
+  but the resource becomes the Collector's host: LogicMonitor applied its Collector modules, and
+  WMI over loopback applied the Hyper-V modules of the Windows host it ran on **[portal,
+  2026-10-25]**. A member's real IP attracts that member's modules the same way.
+- **Enhanced Script NetScan, observed [portal, 2026-10-25]:**
+  - properties go under Resource Credentials Options → *Use custom credentials for this scan* →
+    Add, and reach the script as `netscanProps`; a `.credential` value is masked there. Properties
+    defined elsewhere in the portal also arrive (one the user never entered did); LM API
+    credentials do not arrive unless entered;
+  - the group paths in each emitted `groupName` are created if missing;
+  - "Exclude duplicate IP addresses: Matching any Monitored Resources" (the default) compares the
+    emitted hostname *as written*: an entry whose hostname is an existing resource's IP is
+    excluded, but its reverse-DNS name is not, and becomes a duplicate. Keep emitted hostnames as
+    IPs, or compare addresses in the script. The exclusion skips; it never updates the match;
+  - a Dry Run reports counts (Scanned / Found / Added) and fills in over a minute or two,
+    duplicates first, so a first look under-counts;
+  - a resource deleted and then re-emitted comes back **with its old properties and categories**
+    from Recently Deleted. To start clean, purge it from Recently Deleted too.
+
