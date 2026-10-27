@@ -108,7 +108,17 @@ def module_mutations() -> dict[str, dict]:
     m["graph reads an undeclared datapoint"] = x
     x = copy.deepcopy(nodes); x["graphs"][0]["lines"][0]["datapointName"] = "NoSuchAlias"
     m["graph line names no graph datapoint"] = x
+    # statusDisplayNames [LM recipes, portal 2026-10-27]: objects, metricValue a string.
+    x = copy.deepcopy(nodes); x["datapoints"][0]["statusDisplayNames"] = [
+        {"statusDisplayName": "Offline", "metricValue": 0, "operator": "EQ"}]
+    m["status name metricValue as a number"] = x
+    x = copy.deepcopy(nodes); x["datapoints"][0]["statusDisplayNames"] = ["Offline", "Online"]
+    m["status names as plain strings"] = x
     return m
+
+
+STATUS_NAMES = [{"statusDisplayName": "Offline", "metricValue": "0", "operator": "EQ"},
+                {"statusDisplayName": "Online", "metricValue": "1", "operator": "EQ"}]
 
 
 def dashboard_mutations() -> dict[str, dict]:
@@ -240,6 +250,10 @@ def module_must_pass() -> dict[str, dict]:
     x = copy.deepcopy(nodes)
     x["activeDiscovery"].update(groupMethod="ilp", groupExpr="auto.pve_node")
     m["instances grouped by auto.pve_node (ilp)"] = x
+    x = copy.deepcopy(nodes); dp = x["datapoints"][0]
+    dp["statusDisplayNames"] = copy.deepcopy(STATUS_NAMES)
+    dp["alertBody"] += "\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##)."
+    m["status names, with the name in the alert body"] = x
     return m
 
 
@@ -271,6 +285,9 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(load("Proxmox_VE_Nodes.json"))
     x["activeDiscovery"].update(groupMethod="ilp", groupExpr="pve_node")
     m["ilp groupExpr without the auto. prefix"] = (x, "auto.pve_node")
+    x = copy.deepcopy(load("Proxmox_VE_Nodes.json"))
+    x["datapoints"][0]["statusDisplayNames"] = copy.deepcopy(STATUS_NAMES)
+    m["status names the alert body never uses"] = (x, "ALERTVALUEDISPLAYSTATUSNAME")
     # On exit 0 the portal shows no stderr [portal, 2026-10-24]: end-user text must not send
     # the reader to the collection log.
     x = copy.deepcopy(load("Proxmox_VE_Replication.json"))

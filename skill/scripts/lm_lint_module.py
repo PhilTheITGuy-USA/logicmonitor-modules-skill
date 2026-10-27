@@ -388,6 +388,7 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
                         f"'<op> warn [error [critical]]'")
         if threshold and not (dp.get("alertBody") or "").strip():
             report.warn(f"datapoint {dp_name!r} alerts but has no alertBody")
+        check_status_display_names(dp_name, dp, report)
 
     for dup in sorted({n for n in names if names.count(n) > 1}):
         report.error(f"datapoint {dup!r} is declared more than once")
@@ -427,6 +428,41 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
             "emit.instance" not in discovery:
         report.warn("discovery prints no '####' property separator -- fine for the minimal "
                     "'wildvalue##name' form, but instance properties need it")
+
+
+STATUS_NAME_TOKEN = "##ALERTVALUEDISPLAYSTATUSNAME##"
+STATUS_OPERATORS = ("EQ",)
+
+
+def check_status_display_names(dp_name: str, dp: dict, report: Report) -> None:
+    """statusDisplayNames: [{statusDisplayName, metricValue (a string), operator "EQ"}].
+
+    Shape from LM's monitoring-recipes template, portal-confirmed on the Proxmox v2 suite
+    (2026-10-27): imported, shown on the datapoint, and an alert body's
+    ##ALERTVALUEDISPLAYSTATUSNAME## rendered the name. Only "EQ" has been seen."""
+    names = dp.get("statusDisplayNames")
+    if names is None or names == []:
+        return
+    if not isinstance(names, list):
+        report.error(f"datapoint {dp_name!r} statusDisplayNames must be a list of objects")
+        return
+    for entry in names:
+        if not isinstance(entry, dict):
+            report.error(f"datapoint {dp_name!r} statusDisplayNames entry {entry!r} is not an "
+                         f"object {{statusDisplayName, metricValue, operator}}")
+            continue
+        if not str(entry.get("statusDisplayName") or "").strip():
+            report.error(f"datapoint {dp_name!r} has a status name with no statusDisplayName")
+        if not isinstance(entry.get("metricValue"), str):
+            report.error(f"datapoint {dp_name!r} status name metricValue "
+                         f"{entry.get('metricValue')!r} must be a string, e.g. \"0\"")
+        if entry.get("operator") not in STATUS_OPERATORS:
+            report.warn(f"datapoint {dp_name!r} status name operator {entry.get('operator')!r} "
+                        f"is not one a portal has been seen to keep {STATUS_OPERATORS}")
+    body = dp.get("alertBody") or ""
+    if body.strip() and STATUS_NAME_TOKEN not in body:
+        report.warn(f"datapoint {dp_name!r} names its status values but its alertBody never "
+                    f"uses {STATUS_NAME_TOKEN}, so alerts still read a bare number")
 
 
 def check_graphs(module: dict, report: Report) -> None:

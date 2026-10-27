@@ -98,7 +98,9 @@ observed in a portal here.
 - Names: **PascalCase**, matching LM suites (`CPUUsagePercent`, `MemoryUsedMB`, `DataRateRxMB`,
   `UpTimeSeconds`, `UsedPercent`, `CapacityGB`, `Status`). Never rename a deployed datapoint —
   history doesn't follow, and dashboards drop the widget.
-- **Status datapoints** — give the codes names so alerts read as words **[LM recipes]**:
+- **Status datapoints** — give the codes names so alerts read as words **[LM recipes; portal-confirmed
+  2026-10-27]** (Proxmox v2: imported, shown on the datapoint, and an alert on a stopped guest
+  read "Not running (0)"; only `"operator": "EQ"` has been seen):
   ```json
   "statusDisplayNames": [
     {"statusDisplayName": "Offline", "metricValue": "0", "operator": "EQ"},
@@ -107,6 +109,8 @@ observed in a portal here.
   "alertBody": "Node ##INSTANCE## on ##HOST## is ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##). ..."
   ```
   Objects, not strings; `metricValue` is a string. Without a mapping, state it in the description.
+  Name a value only if the script prints it, and every value it prints. `lm_lint_module.py`
+  checks the shape and warns when an alert body doesn't use the name.
 - Every datapoint should feed something — a graph, an alert, a dashboard. Description includes the
   unit and, for status codes, the mapping.
 
