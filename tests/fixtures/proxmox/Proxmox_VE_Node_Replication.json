@@ -1,0 +1,272 @@
+{
+  "name": "Proxmox_VE_Node_Replication",
+  "displayedAs": "Proxmox VE Node Replication",
+  "description": "Storage replication job health -- failures, replica staleness and run duration -- for the replication jobs this Proxmox VE node runs.",
+  "appliesTo": "hasCategory(\"ProxmoxVE_Node\") && pve.netscan.reachable != \"false\"",
+  "technicalNotes": "BatchScript, one /nodes/{node}/replication call to this node per interval. The node is asked directly, at this resource's own hostname, and never through another node: another node would answer for itself. Requires VM.Audit on /vms/{vmid}; the endpoint filters per guest rather than erroring, so an under-privileged token under-reports.\n\nThe job id (guest and job number, e.g. 100-0) is the wildvalue, deliberately without the node name. A replication job follows its guest, so an id built from the current source node would be destroyed by a migration -- the same reasoning that governs guest instance ids. Jobs are deduplicated by id in case more than one node reports the same one.\n\nSecondsSinceLastSync is the datapoint that matters. Whether the most recent run failed is less important than how old the replica now is: a job failing for a day is a job whose replica is a day old, and only the age says that directly. It ships without a threshold because the tolerable staleness is whatever the job's own schedule implies, which varies per job -- set it per instance or per instance group.\n\nlast_sync, duration and fail_count only exist once a job has run. A job that has never run reports no sync age rather than an age of zero, which would read as 'replicated just now', the exact opposite of the truth.\n\nApplies on ProxmoxVE_Node resources the NetScan has not marked unreachable (pve.netscan.reachable). The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.",
+  "searchKeywords": "proxmox,pve,replication,zfs,replica,dr,disaster recovery",
+  "group": "Proxmox VE",
+  "collectionMethod": "batchscript",
+  "collectionInterval": "10m",
+  "collectionAttrs": {
+    "type": "groovy",
+    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveActiveBase = null\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ntry {\n    def now = System.currentTimeMillis() / 1000L\n    def seen = [] as Set\n    def nodeName = pveSelfNode()\n    try {\n        def jobs = pveNodeGet('/nodes/' + nodeName + '/replication') ?: []\n        jobs.each { job ->\n            def id = job.id?.toString()\n            if (!id || seen.contains(id)) { return }\n            seen << id\n            pveEmit(id, 'FailCount', job.fail_count ?: 0)\n            pveEmit(id, 'Failed', job.error ? 1 : 0)\n            pveEmit(id, 'Disabled', job.disable ? 1 : 0)\n            pveEmit(id, 'Running', job.pid ? 1 : 0)\n            if (job.last_sync != null) {\n                pveEmit(id, 'SecondsSinceLastSync',\n                        pveRound((now as double) - ((job.last_sync as double))))\n            }\n            if (job.duration != null) {\n                pveEmit(id, 'DurationSeconds', pveRound((job.duration as double)))\n            }\n            if (job.error) {\n                System.err.println('Replication job ' + id + ' failed: ' + job.error)\n            }\n        }\n    } catch (Exception nodeException) {\n        System.err.println('Replication collection skipped for node ' + nodeName + ': ' +\n            nodeException.message)\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox replication collection failed: ' + exception.message)\n    return 2\n}\n"
+  },
+  "multiInstance": true,
+  "useWildValueAsUniqueIdentifier": true,
+  "dataSourceType": 1,
+  "type": 0,
+  "datapoints": [
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "FailCount",
+      "description": "Consecutive failures of this replication job.",
+      "threshold": "> 0 2 5",
+      "alertBody": "Replication job ##INSTANCE## has failed ##VALUE## time(s) in a row. Its copy on the target node is falling behind, so a failover now would lose the changes made since the last good run. The error text is shown under Datacenter > Replication in the Proxmox web interface.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "##WILDVALUE##.FailCount"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 2,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Failed",
+      "description": "1 when the job's last run recorded an error. The error text is shown under Datacenter > Replication in the Proxmox web interface.",
+      "threshold": "> 0 0 0",
+      "alertBody": "The last run of replication job ##INSTANCE## failed, so its copy on the target node is out of date until a run succeeds. The error text is shown under Datacenter > Replication in the Proxmox web interface.\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##).\n\nThis started at ##START##, ##DURATION## ago.",
+      "statusDisplayNames": [
+        {
+          "statusDisplayName": "Succeeded",
+          "metricValue": "0",
+          "operator": "EQ"
+        },
+        {
+          "statusDisplayName": "Failed",
+          "metricValue": "1",
+          "operator": "EQ"
+        }
+      ],
+      "interpretExpr": "##WILDVALUE##.Failed"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Disabled",
+      "description": "1 when the job is administratively disabled.",
+      "interpretExpr": "##WILDVALUE##.Disabled"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Running",
+      "description": "1 while the job is actually executing.",
+      "interpretExpr": "##WILDVALUE##.Running"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "SecondsSinceLastSync",
+      "description": "Age of the replica, in seconds since the last successful sync. Withheld for a job that has never run. Ships without a threshold: tolerable staleness follows each job's own schedule.",
+      "interpretExpr": "##WILDVALUE##.SecondsSinceLastSync"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "DurationSeconds",
+      "description": "How long the last run took.",
+      "interpretExpr": "##WILDVALUE##.DurationSeconds"
+    }
+  ],
+  "graphs": [
+    {
+      "name": "Job State",
+      "title": "Job State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Failed",
+          "datapointName": "Failed",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Running",
+          "datapointName": "Running",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Disabled",
+          "datapointName": "Disabled",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Failed",
+          "legend": "Last run failed",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Running",
+          "legend": "Running",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Disabled",
+          "legend": "Disabled",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Consecutive Failures",
+      "title": "Consecutive Failures",
+      "verticalLabel": "failures",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "FailCount",
+          "datapointName": "FailCount",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "FailCount",
+          "legend": "In a row",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Replica Age",
+      "title": "Replica Age",
+      "verticalLabel": "seconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "SecondsSinceLastSync",
+          "datapointName": "SecondsSinceLastSync",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SecondsSinceLastSync",
+          "legend": "Since last good sync",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Run Duration",
+      "title": "Run Duration",
+      "verticalLabel": "seconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "DurationSeconds",
+          "datapointName": "DurationSeconds",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DurationSeconds",
+          "legend": "Last run",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
+  "activeDiscovery": {
+    "enabled": true,
+    "discoveryMethod": "ad_script",
+    "params": {
+      "type": "groovy",
+      "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveActiveBase = null\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveDisplayName = { value ->\n    (value == null ? '' : value.toString()).replaceAll('#', ' ').trim()\n}\ndef pvePropValue = { value ->\n    URLEncoder.encode(value == null ? '' : value.toString(), 'UTF-8')\n}\ndef pveDiscover = { String id, String name, String description, Map properties,\n                    Map rawProperties = [:] ->\n    def pairs = properties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> 'auto.' + key + '=' + pvePropValue(value) }\n    pairs += rawProperties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> key + '=' + pvePropValue(value) }\n    println(pveWildValue(id) + '##' + pveDisplayName(name ?: id) + '##' +\n            pveDisplayName(description) + '####' + pairs.join('&'))\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ntry {\n    def seen = [] as Set\n    def nodeName = pveSelfNode()\n    try {\n        def jobs = pveNodeGet('/nodes/' + nodeName + '/replication') ?: []\n        jobs.each { job ->\n            def id = job.id?.toString()\n            if (!id || seen.contains(id)) { return }\n            seen << id\n            def guest = job.guest?.toString()\n            pveDiscover(\n                id,\n                'Replication ' + id,\n                'Replication of guest ' + guest + ' to ' + (job.target ?: 'unknown'),\n                [\n                    pve_job     : id,\n                    pve_guest   : guest,\n                    pve_target  : job.target,\n                    pve_source  : job.source,\n                    pve_schedule: job.schedule,\n                    pve_type    : job.type\n                ]\n            )\n        }\n    } catch (Exception nodeException) {\n        System.err.println('Replication discovery skipped for node ' + nodeName + ': ' +\n            nodeException.message)\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox replication discovery failed: ' + exception.message)\n    return 2\n}\n"
+    },
+    "discoveryInterval": "60m",
+    "deleteInactiveInstances": false,
+    "autoDeleteInstances": false,
+    "disableDiscoveredInstances": false,
+    "groupMethod": "none",
+    "filters": []
+  }
+}

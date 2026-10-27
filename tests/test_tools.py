@@ -4,9 +4,11 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
 
     python tests/test_tools.py
 
-Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule @ 2e0237b), all 18 modules and both
-dashboards imported and collecting in a real portal. They must lint with zero errors.
+Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE v2 suite's built exports
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, 2026-10-27), all 19 modules imported and
+collecting in a real portal, and its two dashboards as the portal exported them. They must
+lint with zero errors. tests/fixtures/proxmox-v1/ keeps v1's addCategory_Proxmox_VE, a
+known-good PropertySource on AppliesTo true(), a kind v2 does not have.
 
 Known-bad input: each mutation below reintroduces one defect that fails silently in a
 portal. Every one must make the tools fail. A checker that cannot go red is worse than none.
@@ -24,6 +26,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "skill" / "scripts"
 GOOD = ROOT / "tests" / "fixtures" / "proxmox"
+GOOD_V1 = ROOT / "tests" / "fixtures" / "proxmox-v1"
+NODES = "Proxmox_VE_Cluster_Nodes.json"
+TOPOLOGY = "Proxmox_VE_Cluster_Topology.json"
+DASHBOARD = GOOD / "dashboards" / "Proxmox_VE.json"
 BAD_INPUT = ROOT / "evals" / "inputs" / "Acme_Array_Volumes.json"
 LINT = [sys.executable, str(SCRIPTS / "lm_lint_module.py")]
 DASH = [sys.executable, str(SCRIPTS / "lm_dashboards.py"), "check"]
@@ -43,8 +49,8 @@ def expect(name: str, ok: bool, detail: str = "") -> None:
             print("      " + detail.strip().replace("\n", "\n      ")[:1500])
 
 
-def load(name: str) -> dict:
-    return json.loads((GOOD / name).read_text(encoding="utf-8"))
+def load(name: str, where: Path = GOOD) -> dict:
+    return json.loads((where / name).read_text(encoding="utf-8"))
 
 
 GATE = "if (pveHostProp('pve.api.insecure', 'false').toBoolean()) {"
@@ -60,7 +66,7 @@ def in_all_scripts(module: dict, old: str, new: str) -> dict:
 
 
 def module_mutations() -> dict[str, dict]:
-    nodes = load("Proxmox_VE_Nodes.json")
+    nodes = load(NODES)
     m = {}
 
     x = copy.deepcopy(nodes); x["datapoints"][0]["interpretExpr"] = x["datapoints"][0]["name"]
@@ -71,14 +77,14 @@ def module_mutations() -> dict[str, dict]:
     m["useWildValueAsUniqueIdentifier off"] = x
     x = copy.deepcopy(nodes); x["datapoints"][0]["name"] = "In"; x["datapoints"][0]["interpretExpr"] = "##WILDVALUE##.In"
     m["reserved datapoint name 'In'"] = x
-    m["secret property without .credential"] = in_all_scripts(nodes, "pve.api.token.credential", "pve.api.token")
+    m["secret property without .credential"] = in_all_scripts(nodes, "pve.token.credential", "pve.token")
     m["TLS bypass ungated"] = in_all_scripts(nodes, GATE, "if (true) {")
     m["TLS bypass property defaults true"] = in_all_scripts(nodes, "'pve.api.insecure', 'false'", "'pve.api.insecure', 'true'")
     x = copy.deepcopy(nodes)
     x["collectionAttrs"]["content"] = x["collectionAttrs"]["content"].replace(GATE, "{")
     m["TLS bypass ungated in one script only"] = x
 
-    ps = load("addCategory_Proxmox_VE.json")
+    ps = load("addCategory_Proxmox_VE.json", GOOD_V1)
     x = copy.deepcopy(ps)
     x["script"]["content"] = x["script"]["content"].replace(
         "System.err.println('Proxmox detection failed: ' + exception.message)",
@@ -87,7 +93,7 @@ def module_mutations() -> dict[str, dict]:
     x = copy.deepcopy(ps); x["collectionInterval"] = 1800
     m["plain PropertySource carries collectionInterval"] = x
 
-    topo = load("Proxmox_VE_Topology.json")
+    topo = load(TOPOLOGY)
     x = copy.deepcopy(topo); x["collectionAttrs"] = json.loads(x["collectionAttrs"])
     m["TopologySource collectionAttrs as object"] = x
     x = copy.deepcopy(topo); x["type"] = "9"
@@ -122,7 +128,7 @@ STATUS_NAMES = [{"statusDisplayName": "Offline", "metricValue": "0", "operator":
 
 
 def dashboard_mutations() -> dict[str, dict]:
-    tier1 = json.loads((GOOD / "dashboards" / "Proxmox_VE_Tier1.json").read_text(encoding="utf-8"))
+    tier1 = json.loads(DASHBOARD.read_text(encoding="utf-8"))
 
     def first(d: dict, kind: str) -> dict:
         return next(w for w in d["widgets"] if w["config"]["type"] == kind)["config"]
@@ -169,9 +175,16 @@ def dashboard_mutations() -> dict[str, dict]:
 
 def dashboard_portal_export_keys() -> dict[str, dict]:
     """Keys a release-246 portal writes into its own export: must pass cleanly."""
-    tier1 = json.loads((GOOD / "dashboards" / "Proxmox_VE_Tier1.json").read_text(encoding="utf-8"))
+    tier1 = json.loads(DASHBOARD.read_text(encoding="utf-8"))
     m = {}
+    # The fixture is itself a release-246 export, so it carries these keys already; strip
+    # them and put them back, so the case still proves they are accepted, not just present.
     x = copy.deepcopy(tier1)
+    for widget in x["widgets"]:
+        for key in ("isSupportCustomProperty", "supportCustomProperty", "displayClearedAlert"):
+            widget["config"].pop(key, None)
+    r = copy.deepcopy(x)
+    m["the reference key set alone, without the portal's extra keys"] = r
     for widget in x["widgets"]:
         widget["config"]["isSupportCustomProperty"] = False
         widget["config"]["supportCustomProperty"] = False
@@ -183,7 +196,7 @@ def dashboard_portal_export_keys() -> dict[str, dict]:
 
 def dashboard_corpus_values() -> dict[str, dict]:
     """Values only LM's monitoring-recipes corpus vouches for: must pass, with a WARN."""
-    tier1 = json.loads((GOOD / "dashboards" / "Proxmox_VE_Tier1.json").read_text(encoding="utf-8"))
+    tier1 = json.loads(DASHBOARD.read_text(encoding="utf-8"))
 
     def first(d: dict, kind: str) -> dict:
         return next(w for w in d["widgets"] if w["config"]["type"] == kind)["config"]
@@ -215,7 +228,7 @@ def other_module(kind: int, **extra) -> dict:
 
 
 def other_module_mutations() -> dict[str, dict]:
-    nodes = load("Proxmox_VE_Nodes.json")
+    nodes = load(NODES)
     groovy = {"type": "groovy", "content": "//!/lib-groovy/v4\nprintln 'x'\nreturn 0\n"}
     m = {}
     x = copy.deepcopy(nodes); x["activeDiscovery"]["discoveryInterval"] = "1d"
@@ -224,6 +237,12 @@ def other_module_mutations() -> dict[str, dict]:
     x["collectionAttrs"]["content"] = x["collectionAttrs"]["content"].replace(
         "//!/lib-groovy/v4\n", "//!/lib-groovy/v4\n" + SNIPPET_BOOTSTRAP_UNBOUND, 1)
     m["snippets loaded without withBinding"] = x
+    # Per loader: the fixture's own bound loader (lower-case `snippets`) with its binding cut.
+    bound = "snippets.getLoader()).withBinding(getBinding())"
+    assert bound in nodes["collectionAttrs"]["content"], "Nodes fixture no longer carries " + bound
+    x = copy.deepcopy(nodes)
+    x["collectionAttrs"]["content"] = x["collectionAttrs"]["content"].replace(bound, "snippets.getLoader())")
+    m["the script's own snippet loader with its binding removed"] = x
     x = copy.deepcopy(nodes)
     x["collectionAttrs"] = {"type": "powershell",
                             "content": "$secret = '##vendor.api.password##'\nWrite-Output 'x'\nexit 0\n"}
@@ -238,14 +257,14 @@ def other_module_mutations() -> dict[str, dict]:
 
 
 def module_must_pass() -> dict[str, dict]:
-    nodes = load("Proxmox_VE_Nodes.json")
+    nodes = load(NODES)
     groovy = {"type": "groovy", "content": "//!/lib-groovy/v4\nprintln 'x'\nreturn 0\n"}
     m = {}
     x = copy.deepcopy(nodes)
     x["collectionAttrs"]["content"] += "\ndef sshPass = hostProps.get('ssh.pass')\n"
     m["LM built-in credential property ssh.pass"] = x
     m["minimal DiagnosticSource"] = other_module(11, script=groovy)
-    x = copy.deepcopy(load("Proxmox_VE_Topology.json")); x["technicalNotes"] = "x" * 4096
+    x = copy.deepcopy(load(TOPOLOGY)); x["technicalNotes"] = "x" * 4096
     m["technicalNotes of exactly 4096 characters"] = x
     x = copy.deepcopy(nodes)
     x["activeDiscovery"].update(groupMethod="ilp", groupExpr="auto.pve_node")
@@ -262,7 +281,7 @@ ERI_CALL = "emitEri('proxmoxve', 1, keys, ert"
 
 def module_warns() -> dict[str, tuple[dict, str]]:
     """Heuristic findings: each must pass (exit 0) with a WARN containing the given text."""
-    eri = load("addERI_Proxmox_VE.json")
+    eri = load("addERI_Proxmox_VE_Node.json")
     m = {}
     x = copy.deepcopy(eri)
     assert ERI_CALL in x["script"]["content"], "addERI fixture no longer carries " + ERI_CALL
@@ -273,7 +292,7 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     m["ERI type override below priority 3"] = (x, "priority")
     # lm.topo joins a vertex's keys into one ID, and the portal then matches only a resource
     # carrying every one of them [portal, 2026-10-21].
-    topo = load("Proxmox_VE_Topology.json")
+    topo = load(TOPOLOGY)
     one_key = "eri([pveTopoNodeVertexKey(clusterName, nodeName, nodeIps[nodeName])])"
     attrs = json.loads(topo["collectionAttrs"])
     assert one_key in attrs["scriptgroovy"], "Topology fixture no longer carries " + one_key
@@ -282,23 +301,24 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(topo); x["collectionAttrs"] = json.dumps(attrs)
     m["topology vertex built from two keys"] = (x, "carrying all")
     # AD properties are stored as auto.<key>; a bare name groups nothing.
-    x = copy.deepcopy(load("Proxmox_VE_Nodes.json"))
+    x = copy.deepcopy(load(NODES))
     x["activeDiscovery"].update(groupMethod="ilp", groupExpr="pve_node")
     m["ilp groupExpr without the auto. prefix"] = (x, "auto.pve_node")
-    x = copy.deepcopy(load("Proxmox_VE_Nodes.json"))
-    x["datapoints"][0]["statusDisplayNames"] = copy.deepcopy(STATUS_NAMES)
+    x = copy.deepcopy(load(NODES)); dp = x["datapoints"][0]
+    dp["statusDisplayNames"] = copy.deepcopy(STATUS_NAMES)
+    dp["alertBody"] = "Proxmox node ##INSTANCE## is offline."
     m["status names the alert body never uses"] = (x, "ALERTVALUEDISPLAYSTATUSNAME")
     # On exit 0 the portal shows no stderr [portal, 2026-10-24]: end-user text must not send
     # the reader to the collection log.
-    x = copy.deepcopy(load("Proxmox_VE_Replication.json"))
+    x = copy.deepcopy(load("Proxmox_VE_Node_Replication.json"))
     dp = next(d for d in x["datapoints"] if d["name"] == "Failed")
     dp["alertBody"] += " The error text is in this module's collection task log."
     m["alert body pointing at the collection log"] = (x, "stderr")
     # Without graphs the portal plots every datapoint on one chart [portal, 2026-10-24].
-    x = copy.deepcopy(load("Proxmox_VE_Ceph.json")); del x["graphs"]
+    x = copy.deepcopy(load("Proxmox_VE_Cluster_Ceph.json")); del x["graphs"]
     m["DataSource with many datapoints and no graphs"] = (x, "no graphs")
     # gray beside green read as one colour in the portal's legend [portal, 2026-10-24].
-    x = copy.deepcopy(load("Proxmox_VE_StorageCapacity.json"))
+    x = copy.deepcopy(load("Proxmox_VE_Cluster_StorageCapacity.json"))
     cap = next(g for g in x["graphs"] if g["title"] == "Capacity")
     next(l for l in cap["lines"] if l["color"] == "black")["color"] = "gray"
     m["graph colours gray and green together"] = (x, "read as")
@@ -317,24 +337,27 @@ def main() -> int:
     expect(f"{len(good_dash)} known-good dashboards pass with reference resolution", r.returncode == 0,
            r.stdout + r.stderr)
 
-    # Proxmox's category PropertySource prints bare pve.* keys, which the portal stores as
+    # Proxmox's PropertySource prints bare pve.* keys, which the portal stores as
     # auto.pve.* [portal]: the lint must name the real property (a warning, not an error).
-    r = run(LINT + [str(GOOD / "addCategory_Proxmox_VE.json")])
+    r = run(LINT + [str(GOOD / "Proxmox_VE_Info.json")])
     expect("lint names the auto. property a bare PropertySource key becomes",
            r.returncode == 0 and "'auto.pve.version'" in r.stdout, r.stdout)
 
-    r = run(LINT + [str(GOOD / "addERI_Proxmox_VE.json")])
+    r = run(LINT + [str(GOOD / "addERI_Proxmox_VE_Node.json")])
     expect("lint does not warn on the known-good ERI PropertySource's priority",
            r.returncode == 0 and not any(l.strip().startswith("WARN") and "priority" in l
                                          for l in r.stdout.splitlines()), r.stdout)
 
-    r = run(LINT + [str(GOOD / "Proxmox_VE_Topology.json")])
+    r = run(LINT + [str(GOOD / TOPOLOGY)])
     expect("lint does not warn on the known-good TopologySource's one-key vertices",
            r.returncode == 0 and "carrying all" not in r.stdout, r.stdout)
 
     r = run(LINT + good_modules)
     expect("lint does not warn on the known-good modules' end-user text",
            "collection log" not in r.stdout, r.stdout)
+
+    r = run(LINT + [str(GOOD_V1 / "addCategory_Proxmox_VE.json")])
+    expect("known-good true() PropertySource (v1) lints with 0 errors", r.returncode == 0, r.stdout)
 
     r = run(LINT + [str(BAD_INPUT)])
     expect("planted-bug eval input fails lint", r.returncode == 1 and r.stdout.count("ERROR") >= 5, r.stdout)

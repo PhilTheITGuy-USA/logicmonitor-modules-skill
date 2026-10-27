@@ -1,0 +1,190 @@
+{
+  "name": "Proxmox_VE_Node_Subscription",
+  "displayedAs": "Proxmox VE Node Subscription",
+  "description": "This Proxmox VE node's subscription status and renewal date.",
+  "appliesTo": "hasCategory(\"ProxmoxVE_Node\") && pve.netscan.reachable != \"false\"",
+  "technicalNotes": "Script, one /nodes/{node}/subscription call to this node per interval. The node is asked directly, at this resource's own hostname, and never through another node: another node would answer for itself. The endpoint needs no privilege beyond authentication.\n\nnextduedate is a YYYY-MM-DD string rather than an epoch, so it is parsed as UTC midnight. A node with no subscription has no due date at all and reports none -- zero days remaining would read as 'expires today' on every unlicensed node.\n\nActive ships without a threshold: an unsubscribed node is a licensing fact, not a fault, and a homelab would alert forever. Set a threshold where a subscription is genuinely expected.\n\nApplies on ProxmoxVE_Node resources the NetScan has not marked unreachable (pve.netscan.reachable). The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.",
+  "searchKeywords": "proxmox,pve,subscription,licence,license,support,renewal",
+  "group": "Proxmox VE",
+  "collectionMethod": "script",
+  "collectionInterval": "720m",
+  "collectionAttrs": {
+    "type": "groovy",
+    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveActiveBase = null\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ndef SECONDS_PER_DAY = 86400.0d\ntry {\n    def now = System.currentTimeMillis() / 1000L\n    def nodeName = pveSelfNode()\n    def subscription = pveNodeGet('/nodes/' + nodeName + '/subscription') ?: [:]\n    def status = subscription.status?.toString()?.toLowerCase() ?: ''\n    pveEmit(null, 'Active', status == 'active' ? 1 : 0)\n    pveEmit(null, 'Sockets', subscription.sockets ?: 0)\n    if (subscription.checktime != null) {\n        pveEmit(null, 'DaysSinceLastCheck',\n                pveRound(((now as double) - ((subscription.checktime as double))) /\n                         SECONDS_PER_DAY))\n    }\n    def dueDate = subscription.nextduedate?.toString()\n    if (dueDate && dueDate ==~ /^\\d{4}-\\d{2}-\\d{2}$/) {\n        def due = java.time.LocalDate.parse(dueDate)\n            .atStartOfDay(java.time.ZoneOffset.UTC).toEpochSecond()\n        pveEmit(null, 'DaysUntilDue', pveRound(((due as double) - (now as double)) /\n                                            SECONDS_PER_DAY))\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox subscription collection failed: ' + exception.message)\n    return 2\n}\n"
+  },
+  "multiInstance": false,
+  "useWildValueAsUniqueIdentifier": false,
+  "dataSourceType": 1,
+  "type": 0,
+  "datapoints": [
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Active",
+      "description": "1 when the node reports an active subscription. Ships without a threshold: an unsubscribed node is a licensing fact, not a fault.",
+      "interpretExpr": "Active"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Sockets",
+      "description": "CPU sockets the subscription key covers.",
+      "interpretExpr": "Sockets"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "DaysUntilDue",
+      "description": "Days until the subscription's next due date. Withheld on a node with no subscription rather than reported as zero.",
+      "threshold": "< 30 14 7",
+      "alertBody": "The Proxmox subscription on node ##INSTANCE## is due in ##VALUE## days. If it lapses, the node loses access to the enterprise repository and its updates.",
+      "interpretExpr": "DaysUntilDue"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "DaysSinceLastCheck",
+      "description": "Days since Proxmox last validated the key against the subscription server.",
+      "interpretExpr": "DaysSinceLastCheck"
+    }
+  ],
+  "graphs": [
+    {
+      "name": "Subscription State",
+      "title": "Subscription State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Active",
+          "datapointName": "Active",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Active",
+          "legend": "Active",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Days Until Due",
+      "title": "Days Until Due",
+      "verticalLabel": "days",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "DaysUntilDue",
+          "datapointName": "DaysUntilDue",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DaysUntilDue",
+          "legend": "Days left",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Days Since Last Check",
+      "title": "Days Since Last Check",
+      "verticalLabel": "days",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "DaysSinceLastCheck",
+          "datapointName": "DaysSinceLastCheck",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DaysSinceLastCheck",
+          "legend": "Since key last validated",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Sockets Covered",
+      "title": "Sockets Covered",
+      "verticalLabel": "sockets",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "Sockets",
+          "datapointName": "Sockets",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Sockets",
+          "legend": "Covered by the key",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ]
+}

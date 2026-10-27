@@ -1,0 +1,436 @@
+{
+  "name": "Proxmox_VE_Cluster_CephOSD",
+  "displayedAs": "Proxmox VE Cluster Ceph OSD",
+  "description": "Per-OSD state, fill level and latency for a Proxmox VE hyper-converged Ceph cluster.",
+  "appliesTo": "pve.cluster.role == \"active\" || pve.cluster.role == \"standby\"",
+  "technicalNotes": "BatchScript. /nodes/{node}/ceph/osd returns the whole CRUSH tree rather than that node's OSDs -- every node answers with the same cluster-wide map -- so one call discovers and collects every OSD in the cluster. This module is O(1), not O(nodes). Online nodes are tried in turn only until one answers, so a node being down costs nothing. Requires Sys.Audit or Datastore.Audit on /.\n\nThe response is {flags, root}, where root is a recursive bucket tree: datacenter and host buckets carry 'children' lists and OSDs are the leaves. Proxmox's own source carries a 'fixme: return a list instead of extjs tree format?' against this endpoint, so the tree is walked rather than assumed to be any particular depth, and the walk is iterative.\n\nThe wildvalue is the OSD name (osd.12), which is cluster-unique, deliberately without the host. An OSD's host is a CRUSH placement that can change, and an id built from it would be destroyed by a rebalance -- the same reasoning that governs guest instance ids. The host travels as an instance property, where it is free to change.\n\nWhich fields an OSD carries depends on what Ceph could report. status, in, crush_weight, reweight, device_class and pgs come from `osd df tree`; total_space, bytes_used and percent_used from `osd df`; the latencies from the perf dump. A down OSD commonly reports state but no usage and no latency, so each of those is withheld when absent. A zero fill on a down OSD would read as an empty, healthy disk.\n\nNoOutFlagSet reports the cluster-wide noout flag on every OSD instance. noout suppresses rebalancing when an OSD goes down; it is set deliberately during maintenance and then forgotten, which is how a cluster ends up degraded and quiet. The endpoint shape and every field name came from pve-manager PVE/API2/Ceph/OSD.pm; the CRUSH tree is still walked rather than assumed to be any particular depth, because one cluster's layout is not the schema.\n\nApplies on the cluster role: resources whose pve.cluster.role is active or standby, which the NetScan sets. Only one of the pair collects -- the active resource, or the standby while the active one is down or has lost quorum. The other prints nothing, so its datapoints read No Data and the pair never alerts twice. The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.\n\nUnits: UsedBytes in bytes, as Ceph reports it; latencies in milliseconds. MB and GB are decimal (10^6 and 10^9 bytes); the product page states the suite's convention.",
+  "searchKeywords": "proxmox,pve,ceph,osd,crush,rados,storage,hyperconverged,latency",
+  "group": "Proxmox VE",
+  "collectionMethod": "batchscript",
+  "collectionInterval": "5m",
+  "collectionAttrs": {
+    "type": "groovy",
+    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveApiBases = { ->\n    def own = pveHostProp('pve.node') ? pveHostUrl(pveHostProp('system.hostname')) : null\n    ([own, pveBaseUrl?.replaceAll('/+$', '')] +\n        pveHostProp('pve.api.hosts', '').tokenize(',').collect { pveHostUrl(it) })\n        .findAll { it }.unique()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveFailureStatus = { Exception failure ->\n    def match = failure.message =~ /^HTTP (\\d+) /\n    match.find() ? (match.group(1) as int) : null\n}\ndef pveActiveBase = null\ndef pveBasesFor = { String path ->\n    def bases = pveApiBases()\n    if (pveActiveBase in bases) { bases = [pveActiveBase] + (bases - pveActiveBase) }\n    path.startsWith('/nodes/') ? bases.take(2) : bases\n}\ndef pveGet = { String path ->\n    def bases = pveBasesFor(path)\n    Exception last = null\n    for (base in bases) {\n        try {\n            def data = pveGetAt(base, path)\n            pveActiveBase = base\n            return data\n        } catch (IOException failure) {\n            def status = pveFailureStatus(failure)\n            if (status != null && status < 500) { throw failure }\n            last = failure\n        }\n    }\n    throw last ?: new IOException('No Proxmox API address to ask: set pve.api.url')\n}\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pveQuorate = { List status ->\n    def clusterRow = status.find { it.type?.toString() == 'cluster' }\n    clusterRow == null || clusterRow.quorate?.toString() == '1'\n}\ndef pveAddressDown = { String host ->\n    def url = new URI(pveHostUrl(host))\n    def address = url.host.replaceAll(/^\\[|\\]$/, '')\n    try {\n        if (!InetAddress.getByName(address).isReachable(pveTimeout)) { return true }\n        new Socket().withCloseable { it.connect(new InetSocketAddress(address, url.port), pveTimeout) }\n        return false\n    } catch (IOException unreachable) {\n        return true\n    }\n}\ndef pveCorosyncRunning = { ->\n    try {\n        def service = (pveNodeGet('/nodes/' + pveSelfNode() + '/services') ?: [])\n            .find { (it.name ?: it.service)?.toString() == 'corosync' }\n        service == null ? null : service.get('active-state')?.toString() == 'active'\n    } catch (Exception unreadable) {\n        null\n    }\n}\ndef pveStateStore = null\ndef pveState = { ->\n    if (pveStateStore != null) { return pveStateStore }\n    if (binding.hasVariable('pveTestState')) {\n        def map = pveTestState\n        pveStateStore = [read: { String k -> map[k] }, write: { String k, String v, int ttl -> map[k] = v },\n                         drop: { String k -> map.remove(k) }]\n        return pveStateStore\n    }\n    try {\n        def snippets = Class.forName('com.logicmonitor.mod.Snippets')\n        def helper = Class.forName('com.santaba.agent.groovy.utils.GroovyScriptHelper')\n        def loader = helper.getInstance(GroovySystem.version).getScript('Snippets', snippets.getLoader()).withBinding(getBinding())\n        def quiet = new PrintStream(new ByteArrayOutputStream())\n        def lmDebug = loader.load('lm.debug', '1').debugSnippetFactory(quiet, false, false, 'proxmox-ve')\n        def cache = loader.load('lm.cache', '0').cacheSnippetFactory(lmDebug, 'proxmox-ve')\n        pveStateStore = [read: { String k -> cache.cacheGet(k) }, write: { String k, String v, int ttl -> cache.cacheSet(k, v, ttl) },\n                         drop: { String k -> cache.cacheRemove(k) }]\n    } catch (Throwable unavailable) {\n        pveStateStore = [read: { String k -> null }, write: { String k, String v, int ttl -> }, drop: { String k -> }]\n    }\n    return pveStateStore\n}\ndef pveHandBack = { String label, Map result, Closure viewOk ->\n    if (!label) { return result }\n    def key = 'handback:' + (pveHostProp('pve.cluster') ?: '') + ':' +\n              (pveHostProp('pve.node') ?: pveHostProp('system.hostname') ?: '') + ':' + label\n    def state = pveState()\n    if (result.collect) {\n        state.write(key, 'collecting', 7200)\n        return result\n    }\n    if (state.read(key) && viewOk()) {\n        state.drop(key)\n        return result + [collect: true, why: result.why + '; hand-back: one more poll to clear its alerts']\n    }\n    return result\n}\ndef pveRoleResult = null\ndef pveRole = { String label = null ->\n    if (pveRoleResult != null) { return pveRoleResult }\n    def role = pveHostProp('pve.cluster.role')\n    def active = pveHostProp('pve.cluster.active')\n    def ownStatus = { -> pveNodeGet('/cluster/status') ?: [] }\n    def result\n    try {\n        if (role == null) {\n            def standalone = !(pveGet('/cluster/status') ?: []).any { it.type?.toString() == 'cluster' }\n            result = [collect: standalone, why: standalone ? 'standalone host' : 'no cluster role']\n        } else if (role == 'active' && pveHostProp('pve.node') == null) {\n            result = [collect: true, why: 'active cluster resource']\n        } else if (role == 'active') {\n            def status = ownStatus()\n            def clustered = status.any { it.type?.toString() == 'cluster' }\n            if (clustered && pveCorosyncRunning() == false) {\n                result = [collect: false, why: 'active, but corosync is not running on this node']\n            } else {\n                def twoNode = status.count { it.type?.toString() == 'node' } == 2\n                def ok = pveQuorate(status) || twoNode\n                result = [collect: ok, why: ok ? 'active' : 'active, but this node has no quorum']\n            }\n        } else if (role == 'standby' && active?.startsWith('address:')) {\n            def down = pveAddressDown(active.substring('address:'.length()))\n            result = pveHandBack(label, [collect: down, why: down ? 'standby, cluster address down' : 'standby, cluster address answers'], {\n                def status = ownStatus()\n                pveQuorate(status) || status.count { it.type?.toString() == 'node' } == 2\n            })\n        } else if (role == 'standby' && active) {\n            def status = ownStatus()\n            if (pveCorosyncRunning() == false) {\n                pveRoleResult = [collect: false, why: 'standby, but corosync is not running on this node', role: role]\n                return pveRoleResult\n            }\n            def row = status.find { it.type?.toString() == 'node' && it.name?.toString() == active }\n            def twoNode = status.count { it.type?.toString() == 'node' } == 2\n            def takeOver = (pveQuorate(status) || twoNode) && (row == null || row.online?.toString() != '1')\n            result = pveHandBack(label, [collect: takeOver, why: takeOver ? 'standby, ' + active + ' is offline' : 'standby, ' + active + ' is collecting'],\n                                 { pveQuorate(status) || twoNode })\n        } else {\n            result = [collect: false, why: 'no cluster role']\n        }\n    } catch (Exception unreadable) {\n        result = [collect: role == 'active', why: 'cluster role check failed: ' + unreadable.message]\n    }\n    pveRoleResult = result + [role: role]\n    return pveRoleResult\n}\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\nif (!pveRole('Proxmox_VE_Cluster_CephOSD').collect) {\n    return 0\n}\ndef collectOSDs = { root ->\n    def found = []\n    def stack = [root]\n    while (stack) {\n        def entry = stack.remove(stack.size() - 1)\n        if (!(entry instanceof Map)) { continue }\n        if (entry.type?.toString() == 'osd') {\n            found << entry\n        }\n        if (entry.children instanceof List) {\n            entry.children.each { stack << it }\n        }\n    }\n    return found\n}\ntry {\n    def nodes = (pveGet('/cluster/resources?type=node') ?: [])\n        .findAll { it.status?.toString() == 'online' }\n    def tree = null\n    for (node in nodes) {\n        def nodeName = node.node?.toString()\n        if (!nodeName) { continue }\n        try {\n            tree = pveGet('/nodes/' + nodeName + '/ceph/osd')\n            if (tree) { break }\n        } catch (Exception nodeException) {\n            System.err.println('Ceph OSD tree unavailable from ' + nodeName + ': ' +\n                nodeException.message)\n        }\n    }\n    if (!tree || !(tree.root instanceof Map)) {\n        System.err.println('No Ceph OSD tree available from any online node. This is expected ' +\n            'on a cluster that does not run Ceph.')\n        return 0\n    }\n    def flags = tree.flags?.toString() ?: ''\n    def nooutSet = flags.tokenize(',').collect { it.trim() }.contains('noout')\n    collectOSDs(tree.root).each { osd ->\n        def id = osd.name?.toString()\n        if (!id) { return }\n        pveEmit(id, 'Up', osd.status?.toString() == 'up' ? 1 : 0)\n        pveEmit(id, 'OSDIn', (osd.in ?: 0) as int > 0 ? 1 : 0)\n        pveEmit(id, 'NoOutFlagSet', nooutSet ? 1 : 0)\n        if (osd.crush_weight != null) {\n            pveEmit(id, 'CrushWeight', pveRound((osd.crush_weight as double)))\n        }\n        if (osd.reweight != null) {\n            pveEmit(id, 'Reweight', pveRound((osd.reweight as double)))\n        }\n        if (osd.pgs != null) {\n            pveEmit(id, 'PlacementGroups', osd.pgs)\n        }\n        if (osd.total_space != null) {\n            pveEmit(id, 'Capacity', osd.total_space)\n            pveEmit(id, 'UsedBytes', osd.bytes_used ?: 0)\n        }\n        if (osd.percent_used != null) {\n            pveEmit(id, 'UsedPercent', pveRound((osd.percent_used as double)))\n        }\n        if (osd.commit_latency_ms != null) {\n            pveEmit(id, 'CommitLatencyMs', pveRound((osd.commit_latency_ms as double)))\n        }\n        if (osd.apply_latency_ms != null) {\n            pveEmit(id, 'ApplyLatencyMs', pveRound((osd.apply_latency_ms as double)))\n        }\n    }\n    if (nooutSet) {\n        System.err.println('Ceph OSD flags are set on this cluster: ' + flags)\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox Ceph OSD collection failed: ' + exception.message)\n    return 2\n}\n"
+  },
+  "multiInstance": true,
+  "useWildValueAsUniqueIdentifier": true,
+  "dataSourceType": 1,
+  "type": 0,
+  "datapoints": [
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 5,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Up",
+      "description": "1 when the OSD is up. A down OSD is not serving data.",
+      "threshold": "< 1 1 1",
+      "alertBody": "Ceph OSD ##INSTANCE## is down. Check NoOutFlagSet before acting: if noout is set this may be planned maintenance.\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##).",
+      "statusDisplayNames": [
+        {
+          "statusDisplayName": "Down",
+          "metricValue": "0",
+          "operator": "EQ"
+        },
+        {
+          "statusDisplayName": "Up",
+          "metricValue": "1",
+          "operator": "EQ"
+        }
+      ],
+      "interpretExpr": "##WILDVALUE##.Up"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "OSDIn",
+      "description": "1 when the OSD is in the cluster. An OSD that is up but out is deliberately excluded from data placement, typically during a planned drain.",
+      "interpretExpr": "##WILDVALUE##.OSDIn"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "NoOutFlagSet",
+      "description": "1 when the cluster-wide noout flag is set, which suppresses rebalancing when an OSD goes down. Reported on every OSD because it changes what a down OSD means.",
+      "interpretExpr": "##WILDVALUE##.NoOutFlagSet"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "UsedPercent",
+      "description": "OSD fill level. Ceph blocks writes at its full ratio and degrades well before it, and rebalancing needs free space to work with.",
+      "threshold": "> 75 85 90",
+      "alertBody": "Ceph OSD ##INSTANCE## is ##VALUE##% full. When any one OSD reaches Ceph's full ratio the cluster stops accepting writes, so a single unbalanced OSD can halt writes for every guest on Ceph.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "##WILDVALUE##.UsedPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Capacity",
+      "description": "OSD raw capacity, bytes.",
+      "interpretExpr": "##WILDVALUE##.Capacity"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "UsedBytes",
+      "description": "OSD raw capacity in use, bytes.",
+      "interpretExpr": "##WILDVALUE##.UsedBytes"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "CrushWeight",
+      "description": "The OSD's weight in the CRUSH map, normally its size in TiB.",
+      "interpretExpr": "##WILDVALUE##.CrushWeight"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Reweight",
+      "description": "Override weight, 0.0 to 1.0. Below 1.0 means the OSD has been manually or automatically down-weighted.",
+      "interpretExpr": "##WILDVALUE##.Reweight"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PlacementGroups",
+      "description": "Placement groups currently mapped to this OSD. A large imbalance across OSDs indicates a CRUSH or weighting problem.",
+      "interpretExpr": "##WILDVALUE##.PlacementGroups"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "CommitLatencyMs",
+      "description": "Ceph commit latency for this OSD, milliseconds.",
+      "interpretExpr": "##WILDVALUE##.CommitLatencyMs"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "ApplyLatencyMs",
+      "description": "Ceph apply latency for this OSD, milliseconds.",
+      "interpretExpr": "##WILDVALUE##.ApplyLatencyMs"
+    }
+  ],
+  "graphs": [
+    {
+      "name": "OSD State",
+      "title": "OSD State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Up",
+          "datapointName": "Up",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDIn",
+          "datapointName": "OSDIn",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "NoOutFlagSet",
+          "datapointName": "NoOutFlagSet",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Up",
+          "legend": "Up",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDIn",
+          "legend": "In",
+          "color": "fuchsia",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "NoOutFlagSet",
+          "legend": "noout flag set",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Used",
+      "title": "Used",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Capacity",
+      "title": "Capacity",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "UsedBytes",
+          "datapointName": "UsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Capacity",
+          "datapointName": "Capacity",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Capacity",
+          "legend": "Total",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Latency",
+      "title": "Latency",
+      "verticalLabel": "milliseconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "CommitLatencyMs",
+          "datapointName": "CommitLatencyMs",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "ApplyLatencyMs",
+          "datapointName": "ApplyLatencyMs",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CommitLatencyMs",
+          "legend": "Commit",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "ApplyLatencyMs",
+          "legend": "Apply",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Weight",
+      "title": "Weight",
+      "verticalLabel": "weight",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "CrushWeight",
+          "datapointName": "CrushWeight",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Reweight",
+          "datapointName": "Reweight",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CrushWeight",
+          "legend": "CRUSH weight",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Reweight",
+          "legend": "Reweight",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Placement Groups",
+      "title": "Placement Groups",
+      "verticalLabel": "PGs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "PlacementGroups",
+          "datapointName": "PlacementGroups",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "PlacementGroups",
+          "legend": "Mapped to this OSD",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ],
+  "activeDiscovery": {
+    "enabled": true,
+    "discoveryMethod": "ad_script",
+    "params": {
+      "type": "groovy",
+      "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveApiBases = { ->\n    def own = pveHostProp('pve.node') ? pveHostUrl(pveHostProp('system.hostname')) : null\n    ([own, pveBaseUrl?.replaceAll('/+$', '')] +\n        pveHostProp('pve.api.hosts', '').tokenize(',').collect { pveHostUrl(it) })\n        .findAll { it }.unique()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveFailureStatus = { Exception failure ->\n    def match = failure.message =~ /^HTTP (\\d+) /\n    match.find() ? (match.group(1) as int) : null\n}\ndef pveActiveBase = null\ndef pveBasesFor = { String path ->\n    def bases = pveApiBases()\n    if (pveActiveBase in bases) { bases = [pveActiveBase] + (bases - pveActiveBase) }\n    path.startsWith('/nodes/') ? bases.take(2) : bases\n}\ndef pveGet = { String path ->\n    def bases = pveBasesFor(path)\n    Exception last = null\n    for (base in bases) {\n        try {\n            def data = pveGetAt(base, path)\n            pveActiveBase = base\n            return data\n        } catch (IOException failure) {\n            def status = pveFailureStatus(failure)\n            if (status != null && status < 500) { throw failure }\n            last = failure\n        }\n    }\n    throw last ?: new IOException('No Proxmox API address to ask: set pve.api.url')\n}\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveDisplayName = { value ->\n    (value == null ? '' : value.toString()).replaceAll('#', ' ').trim()\n}\ndef pvePropValue = { value ->\n    URLEncoder.encode(value == null ? '' : value.toString(), 'UTF-8')\n}\ndef pveDiscover = { String id, String name, String description, Map properties,\n                    Map rawProperties = [:] ->\n    def pairs = properties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> 'auto.' + key + '=' + pvePropValue(value) }\n    pairs += rawProperties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> key + '=' + pvePropValue(value) }\n    println(pveWildValue(id) + '##' + pveDisplayName(name ?: id) + '##' +\n            pveDisplayName(description) + '####' + pairs.join('&'))\n}\ndef pveSizeLabel = { bytes ->\n    def value = (bytes ?: 0) as double\n    if (value <= 0) { return '' }\n    if (value >= 1e12d) { return String.format(Locale.ROOT, '%.1f TB', value / 1e12d) }\n    if (value >= 1e10d) { return String.format(Locale.ROOT, '%.0f GB', value / 1e9d) }\n    if (value >= 1e9d) { return String.format(Locale.ROOT, '%.1f GB', value / 1e9d) }\n    return String.format(Locale.ROOT, '%.0f MB', value / 1e6d)\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ndef collectOSDs = { root ->\n    def found = []\n    def stack = [root]\n    while (stack) {\n        def entry = stack.remove(stack.size() - 1)\n        if (!(entry instanceof Map)) { continue }\n        if (entry.type?.toString() == 'osd') {\n            found << entry\n        }\n        if (entry.children instanceof List) {\n            entry.children.each { stack << it }\n        }\n    }\n    return found\n}\ntry {\n    def nodes = (pveGet('/cluster/resources?type=node') ?: [])\n        .findAll { it.status?.toString() == 'online' }\n    def tree = null\n    for (node in nodes) {\n        def nodeName = node.node?.toString()\n        if (!nodeName) { continue }\n        try {\n            tree = pveGet('/nodes/' + nodeName + '/ceph/osd')\n            if (tree) { break }\n        } catch (Exception nodeException) {\n            System.err.println('Ceph OSD tree unavailable from ' + nodeName + ': ' +\n                nodeException.message)\n        }\n    }\n    if (!tree || !(tree.root instanceof Map)) {\n        System.err.println('No Ceph OSD tree available from any online node. This is expected ' +\n            'on a cluster that does not run Ceph.')\n        return 0\n    }\n    collectOSDs(tree.root).each { osd ->\n        def name = osd.name?.toString()\n        if (!name) { return }\n        def size = pveSizeLabel(osd.total_space)\n        pveDiscover(\n            name,\n            name + (size ? ' (' + size + ')' : ''),\n            'Ceph OSD ' + name + (osd.host ? ' on ' + osd.host : ''),\n            [\n                pve_osd         : name,\n                pve_osd_id      : osd.id,\n                pve_host        : osd.host,\n                pve_device_class: osd.device_class,\n                pve_osd_type    : osd.osdtype\n            ]\n        )\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox Ceph OSD discovery failed: ' + exception.message)\n    return 2\n}\n"
+    },
+    "discoveryInterval": "60m",
+    "deleteInactiveInstances": false,
+    "autoDeleteInstances": false,
+    "disableDiscoveredInstances": false,
+    "groupMethod": "none",
+    "filters": []
+  }
+}

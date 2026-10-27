@@ -86,7 +86,7 @@ module or dashboard JSON you write, edit or are asked to debug, and report what 
   only LM's corpus vouches for (extra themes, `gauge`/`pieChart`/`text` widgets, …) pass with a
   `WARN`: count the widgets after import.
 
-Both were mutation-tested against a 17-module suite that works in a portal: it lints with zero
+Both are mutation-tested against the 19-module Proxmox VE v2 suite, which works in a portal: it lints with zero
 errors, and each defect class above makes the tools fail. A clean run is still not a portal import.
 
 ## Workflow for a new module or suite

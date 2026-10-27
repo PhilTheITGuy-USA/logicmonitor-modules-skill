@@ -1,0 +1,670 @@
+{
+  "name": "Proxmox_VE_Cluster_Ceph",
+  "displayedAs": "Proxmox VE Cluster Ceph",
+  "description": "Ceph cluster health, OSD state, placement group state and capacity for a Proxmox VE hyper-converged cluster.",
+  "appliesTo": "pve.cluster.role == \"active\" || pve.cluster.role == \"standby\"",
+  "technicalNotes": "Single instance, one /cluster/ceph/status call per interval, whatever the size of the Ceph cluster. Requires Sys.Audit or Datastore.Audit on /. The Proxmox API declares this endpoint's return as an untyped object -- it passes through whatever `ceph status` produces -- so no field can be relied on from the schema, and Ceph has moved these keys between releases. Every field is therefore still read defensively, osdmap is accepted in both its flat and nested shapes, and each group of datapoints is withheld entirely when its source key is absent. That defensiveness is deliberate and should stay: one cluster's reply is not the schema.\n\nMost Proxmox installs do not run Ceph. That case reports CephAvailable=0 and withholds everything else, rather than reporting a healthy cluster with zero OSDs. It is not a collection failure.\n\nHealth is three flags rather than one ordinal, because an encoding where 2 means HEALTH_ERR is something every dashboard author then has to look up. Placement group cleanliness is decided by decomposing the compound state name (active+clean, active+undersized+degraded) rather than by string-matching active+clean, so a state Ceph adds later does not silently count as clean.\n\nApplies on the cluster role: resources whose pve.cluster.role is active or standby, which the NetScan sets. Only one of the pair collects -- the active resource, or the standby while the active one is down or has lost quorum. The other prints nothing, so its datapoints read No Data and the pair never alerts twice. The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.\n\nUnits: UsedBytes in bytes, as Ceph reports it. MB and GB are decimal (10^6 and 10^9 bytes); the product page states the suite's convention.",
+  "searchKeywords": "proxmox,pve,ceph,osd,placement group,pg,storage,hyperconverged,rados",
+  "group": "Proxmox VE",
+  "collectionMethod": "script",
+  "collectionInterval": "5m",
+  "collectionAttrs": {
+    "type": "groovy",
+    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveApiBases = { ->\n    def own = pveHostProp('pve.node') ? pveHostUrl(pveHostProp('system.hostname')) : null\n    ([own, pveBaseUrl?.replaceAll('/+$', '')] +\n        pveHostProp('pve.api.hosts', '').tokenize(',').collect { pveHostUrl(it) })\n        .findAll { it }.unique()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveFailureStatus = { Exception failure ->\n    def match = failure.message =~ /^HTTP (\\d+) /\n    match.find() ? (match.group(1) as int) : null\n}\ndef pveActiveBase = null\ndef pveBasesFor = { String path ->\n    def bases = pveApiBases()\n    if (pveActiveBase in bases) { bases = [pveActiveBase] + (bases - pveActiveBase) }\n    path.startsWith('/nodes/') ? bases.take(2) : bases\n}\ndef pveGet = { String path ->\n    def bases = pveBasesFor(path)\n    Exception last = null\n    for (base in bases) {\n        try {\n            def data = pveGetAt(base, path)\n            pveActiveBase = base\n            return data\n        } catch (IOException failure) {\n            def status = pveFailureStatus(failure)\n            if (status != null && status < 500) { throw failure }\n            last = failure\n        }\n    }\n    throw last ?: new IOException('No Proxmox API address to ask: set pve.api.url')\n}\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pvePercent = { used, total ->\n    def totalValue = (total ?: 0) as double\n    totalValue > 0 ? pveRound(((used ?: 0) as double) * 100.0d / totalValue) : 0\n}\ndef pveQuorate = { List status ->\n    def clusterRow = status.find { it.type?.toString() == 'cluster' }\n    clusterRow == null || clusterRow.quorate?.toString() == '1'\n}\ndef pveAddressDown = { String host ->\n    def url = new URI(pveHostUrl(host))\n    def address = url.host.replaceAll(/^\\[|\\]$/, '')\n    try {\n        if (!InetAddress.getByName(address).isReachable(pveTimeout)) { return true }\n        new Socket().withCloseable { it.connect(new InetSocketAddress(address, url.port), pveTimeout) }\n        return false\n    } catch (IOException unreachable) {\n        return true\n    }\n}\ndef pveCorosyncRunning = { ->\n    try {\n        def service = (pveNodeGet('/nodes/' + pveSelfNode() + '/services') ?: [])\n            .find { (it.name ?: it.service)?.toString() == 'corosync' }\n        service == null ? null : service.get('active-state')?.toString() == 'active'\n    } catch (Exception unreadable) {\n        null\n    }\n}\ndef pveStateStore = null\ndef pveState = { ->\n    if (pveStateStore != null) { return pveStateStore }\n    if (binding.hasVariable('pveTestState')) {\n        def map = pveTestState\n        pveStateStore = [read: { String k -> map[k] }, write: { String k, String v, int ttl -> map[k] = v },\n                         drop: { String k -> map.remove(k) }]\n        return pveStateStore\n    }\n    try {\n        def snippets = Class.forName('com.logicmonitor.mod.Snippets')\n        def helper = Class.forName('com.santaba.agent.groovy.utils.GroovyScriptHelper')\n        def loader = helper.getInstance(GroovySystem.version).getScript('Snippets', snippets.getLoader()).withBinding(getBinding())\n        def quiet = new PrintStream(new ByteArrayOutputStream())\n        def lmDebug = loader.load('lm.debug', '1').debugSnippetFactory(quiet, false, false, 'proxmox-ve')\n        def cache = loader.load('lm.cache', '0').cacheSnippetFactory(lmDebug, 'proxmox-ve')\n        pveStateStore = [read: { String k -> cache.cacheGet(k) }, write: { String k, String v, int ttl -> cache.cacheSet(k, v, ttl) },\n                         drop: { String k -> cache.cacheRemove(k) }]\n    } catch (Throwable unavailable) {\n        pveStateStore = [read: { String k -> null }, write: { String k, String v, int ttl -> }, drop: { String k -> }]\n    }\n    return pveStateStore\n}\ndef pveHandBack = { String label, Map result, Closure viewOk ->\n    if (!label) { return result }\n    def key = 'handback:' + (pveHostProp('pve.cluster') ?: '') + ':' +\n              (pveHostProp('pve.node') ?: pveHostProp('system.hostname') ?: '') + ':' + label\n    def state = pveState()\n    if (result.collect) {\n        state.write(key, 'collecting', 7200)\n        return result\n    }\n    if (state.read(key) && viewOk()) {\n        state.drop(key)\n        return result + [collect: true, why: result.why + '; hand-back: one more poll to clear its alerts']\n    }\n    return result\n}\ndef pveRoleResult = null\ndef pveRole = { String label = null ->\n    if (pveRoleResult != null) { return pveRoleResult }\n    def role = pveHostProp('pve.cluster.role')\n    def active = pveHostProp('pve.cluster.active')\n    def ownStatus = { -> pveNodeGet('/cluster/status') ?: [] }\n    def result\n    try {\n        if (role == null) {\n            def standalone = !(pveGet('/cluster/status') ?: []).any { it.type?.toString() == 'cluster' }\n            result = [collect: standalone, why: standalone ? 'standalone host' : 'no cluster role']\n        } else if (role == 'active' && pveHostProp('pve.node') == null) {\n            result = [collect: true, why: 'active cluster resource']\n        } else if (role == 'active') {\n            def status = ownStatus()\n            def clustered = status.any { it.type?.toString() == 'cluster' }\n            if (clustered && pveCorosyncRunning() == false) {\n                result = [collect: false, why: 'active, but corosync is not running on this node']\n            } else {\n                def twoNode = status.count { it.type?.toString() == 'node' } == 2\n                def ok = pveQuorate(status) || twoNode\n                result = [collect: ok, why: ok ? 'active' : 'active, but this node has no quorum']\n            }\n        } else if (role == 'standby' && active?.startsWith('address:')) {\n            def down = pveAddressDown(active.substring('address:'.length()))\n            result = pveHandBack(label, [collect: down, why: down ? 'standby, cluster address down' : 'standby, cluster address answers'], {\n                def status = ownStatus()\n                pveQuorate(status) || status.count { it.type?.toString() == 'node' } == 2\n            })\n        } else if (role == 'standby' && active) {\n            def status = ownStatus()\n            if (pveCorosyncRunning() == false) {\n                pveRoleResult = [collect: false, why: 'standby, but corosync is not running on this node', role: role]\n                return pveRoleResult\n            }\n            def row = status.find { it.type?.toString() == 'node' && it.name?.toString() == active }\n            def twoNode = status.count { it.type?.toString() == 'node' } == 2\n            def takeOver = (pveQuorate(status) || twoNode) && (row == null || row.online?.toString() != '1')\n            result = pveHandBack(label, [collect: takeOver, why: takeOver ? 'standby, ' + active + ' is offline' : 'standby, ' + active + ' is collecting'],\n                                 { pveQuorate(status) || twoNode })\n        } else {\n            result = [collect: false, why: 'no cluster role']\n        }\n    } catch (Exception unreadable) {\n        result = [collect: role == 'active', why: 'cluster role check failed: ' + unreadable.message]\n    }\n    pveRoleResult = result + [role: role]\n    return pveRoleResult\n}\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\nif (!pveRole('Proxmox_VE_Cluster_Ceph').collect) {\n    return 0\n}\ntry {\n    def status = null\n    try {\n        status = pveGet('/cluster/ceph/status')\n    } catch (Exception unavailable) {\n        System.err.println('Ceph status unavailable (expected when Ceph is not configured): ' +\n            unavailable.message)\n    }\n    if (!status) {\n        pveEmit(null, 'CephAvailable', 0)\n        return 0\n    }\n    pveEmit(null, 'CephAvailable', 1)\n    def health = (status.health instanceof Map) ? status.health : [:]\n    def healthStatus = health.status?.toString() ?: ''\n    if (healthStatus) {\n        pveEmit(null, 'HealthOK', healthStatus == 'HEALTH_OK' ? 1 : 0)\n        pveEmit(null, 'HealthWarn', healthStatus == 'HEALTH_WARN' ? 1 : 0)\n        pveEmit(null, 'HealthError', healthStatus == 'HEALTH_ERR' ? 1 : 0)\n        def checks = (health.checks instanceof Map) ? health.checks : [:]\n        pveEmit(null, 'HealthChecks', checks.size())\n        if (checks) {\n            System.err.println('Ceph health checks: ' + checks.keySet().join(', '))\n        }\n    }\n    def osdmap = (status.osdmap instanceof Map) ? status.osdmap : [:]\n    if (osdmap.osdmap instanceof Map) { osdmap = osdmap.osdmap }\n    if (osdmap.num_osds != null) {\n        def total = osdmap.num_osds ?: 0\n        def up = osdmap.num_up_osds ?: 0\n        def inCluster = osdmap.num_in_osds ?: 0\n        pveEmit(null, 'OSDsTotal', total)\n        pveEmit(null, 'OSDsUp', up)\n        pveEmit(null, 'OSDsIn', inCluster)\n        pveEmit(null, 'OSDsDown', (total as int) - (up as int))\n        pveEmit(null, 'OSDsOut', (total as int) - (inCluster as int))\n    }\n    def pgmap = (status.pgmap instanceof Map) ? status.pgmap : [:]\n    if (pgmap.num_pgs != null) {\n        pveEmit(null, 'PGsTotal', pgmap.num_pgs ?: 0)\n        def healthyComponents = ['active', 'clean']\n        def byState = (pgmap.pgs_by_state instanceof List) ? pgmap.pgs_by_state : []\n        def clean = 0\n        byState.each { entry ->\n            def name = entry?.state_name?.toString() ?: ''\n            def count = (entry?.count ?: 0) as int\n            if (name && name.tokenize('+').every { healthyComponents.contains(it) }) {\n                clean += count\n            }\n        }\n        if (byState) {\n            pveEmit(null, 'PGsClean', clean)\n            pveEmit(null, 'PGsNotClean', ((pgmap.num_pgs ?: 0) as int) - clean)\n        }\n    }\n    if (pgmap.bytes_total != null) {\n        def total = (pgmap.bytes_total ?: 0) as double\n        def used = (pgmap.bytes_used ?: 0) as double\n        pveEmit(null, 'Capacity', total as long)\n        pveEmit(null, 'UsedBytes', used as long)\n        pveEmit(null, 'FreeSpace', (pgmap.bytes_avail ?: 0) as long)\n        pveEmit(null, 'UsedPercent', pvePercent(used, total))\n    }\n    def quorum = (status.quorum_names instanceof List) ? status.quorum_names : null\n    def monmap = (status.monmap instanceof Map) ? status.monmap : [:]\n    def mons = (monmap.mons instanceof List) ? monmap.mons.size() : monmap.num_mons\n    if (quorum != null && mons != null) {\n        pveEmit(null, 'MonitorsTotal', mons)\n        pveEmit(null, 'MonitorsInQuorum', quorum.size())\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox Ceph collection failed: ' + exception.message)\n    return 2\n}\n"
+  },
+  "multiInstance": false,
+  "useWildValueAsUniqueIdentifier": false,
+  "dataSourceType": 1,
+  "type": 0,
+  "datapoints": [
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "CephAvailable",
+      "description": "1 when Ceph status could be read. 0 on a cluster with no Ceph configured, in which case every other datapoint here is withheld.",
+      "interpretExpr": "CephAvailable"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "HealthOK",
+      "description": "1 when Ceph reports HEALTH_OK.",
+      "interpretExpr": "HealthOK"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 5,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "HealthWarn",
+      "description": "1 when Ceph reports HEALTH_WARN.",
+      "threshold": "> 0 0 0",
+      "alertBody": "Ceph on the Proxmox cluster containing ##HOST## reports HEALTH_WARN. Data is still being served, but a condition needs attention before it becomes HEALTH_ERR; `ceph health detail` on any node names it.\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##).\n\nThis started at ##START##, ##DURATION## ago.",
+      "statusDisplayNames": [
+        {
+          "statusDisplayName": "Clear",
+          "metricValue": "0",
+          "operator": "EQ"
+        },
+        {
+          "statusDisplayName": "HEALTH_WARN",
+          "metricValue": "1",
+          "operator": "EQ"
+        }
+      ],
+      "interpretExpr": "HealthWarn"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "HealthError",
+      "description": "1 when Ceph reports HEALTH_ERR.",
+      "threshold": "> 0 0 0",
+      "alertBody": "Ceph reports HEALTH_ERR. Data availability or durability is at risk; check `ceph health detail` on any node.\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##).",
+      "statusDisplayNames": [
+        {
+          "statusDisplayName": "Clear",
+          "metricValue": "0",
+          "operator": "EQ"
+        },
+        {
+          "statusDisplayName": "HEALTH_ERR",
+          "metricValue": "1",
+          "operator": "EQ"
+        }
+      ],
+      "interpretExpr": "HealthError"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "HealthChecks",
+      "description": "Number of active Ceph health checks. The checks are listed under Ceph in the Proxmox web interface, or by running ceph health detail on a node.",
+      "interpretExpr": "HealthChecks"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "OSDsTotal",
+      "description": "OSDs known to the cluster.",
+      "interpretExpr": "OSDsTotal"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "OSDsUp",
+      "description": "OSDs currently up.",
+      "interpretExpr": "OSDsUp"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "OSDsIn",
+      "description": "OSDs currently in the cluster.",
+      "interpretExpr": "OSDsIn"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "OSDsDown",
+      "description": "OSDs known but not up.",
+      "threshold": "> 0 0 1",
+      "alertBody": "##VALUE## Ceph OSD(s) on the Proxmox cluster containing ##HOST## are down. Their data is being served from the remaining replicas, so redundancy is reduced until they return. The Ceph OSD module shows which ones.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "OSDsDown"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "OSDsOut",
+      "description": "OSDs known but not in the cluster. Expected during a planned rebalance.",
+      "interpretExpr": "OSDsOut"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PGsTotal",
+      "description": "Placement groups in the cluster.",
+      "interpretExpr": "PGsTotal"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PGsClean",
+      "description": "Placement groups whose every state component is active or clean.",
+      "interpretExpr": "PGsClean"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 15,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PGsNotClean",
+      "description": "Placement groups in any other state: degraded, undersized, recovering, backfilling. Non-zero during normal recovery, so the threshold allows time to settle.",
+      "threshold": "> 0 0 0",
+      "alertBody": "##VALUE## Ceph placement group(s) on the Proxmox cluster containing ##HOST## are not active+clean (degraded, undersized, recovering or backfilling). This is normal briefly after an OSD restarts; if it persists, data has fewer copies than configured.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "PGsNotClean"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Capacity",
+      "description": "Raw cluster capacity, bytes.",
+      "interpretExpr": "Capacity"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "UsedBytes",
+      "description": "Raw cluster capacity in use, bytes.",
+      "interpretExpr": "UsedBytes"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "FreeSpace",
+      "description": "Raw cluster capacity available, bytes.",
+      "interpretExpr": "FreeSpace"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "UsedPercent",
+      "description": "Raw cluster utilisation. Ceph degrades badly when full, and rebalancing needs free space to work with.",
+      "threshold": "> 75 85 90",
+      "alertBody": "Ceph on the Proxmox cluster containing ##HOST## is ##VALUE##% full. Ceph slows and then blocks writes as it nears its full ratio, and recovering from an OSD failure needs free space to rebalance into.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "UsedPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "MonitorsTotal",
+      "description": "Ceph monitors in the monmap.",
+      "interpretExpr": "MonitorsTotal"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "MonitorsInQuorum",
+      "description": "Ceph monitors currently in quorum. A cluster that loses monitor quorum is unavailable regardless of OSD state.",
+      "interpretExpr": "MonitorsInQuorum"
+    }
+  ],
+  "graphs": [
+    {
+      "name": "Health",
+      "title": "Health",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "HealthOK",
+          "datapointName": "HealthOK",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HealthWarn",
+          "datapointName": "HealthWarn",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "HealthError",
+          "datapointName": "HealthError",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "CephAvailable",
+          "datapointName": "CephAvailable",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "HealthOK",
+          "legend": "OK",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HealthWarn",
+          "legend": "Warning",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "HealthError",
+          "legend": "Error",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "CephAvailable",
+          "legend": "Status readable",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    },
+    {
+      "name": "Health Checks",
+      "title": "Health Checks",
+      "verticalLabel": "checks",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "HealthChecks",
+          "datapointName": "HealthChecks",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "HealthChecks",
+          "legend": "Active checks",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "OSDs",
+      "title": "OSDs",
+      "verticalLabel": "OSDs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "OSDsTotal",
+          "datapointName": "OSDsTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsUp",
+          "datapointName": "OSDsUp",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsIn",
+          "datapointName": "OSDsIn",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsDown",
+          "datapointName": "OSDsDown",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "OSDsOut",
+          "datapointName": "OSDsOut",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "OSDsTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsUp",
+          "legend": "Up",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsIn",
+          "legend": "In",
+          "color": "fuchsia",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsDown",
+          "legend": "Down",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "OSDsOut",
+          "legend": "Out",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Placement Groups",
+      "title": "Placement Groups",
+      "verticalLabel": "PGs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "PGsTotal",
+          "datapointName": "PGsTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PGsClean",
+          "datapointName": "PGsClean",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PGsNotClean",
+          "datapointName": "PGsNotClean",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "PGsTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PGsClean",
+          "legend": "Clean",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PGsNotClean",
+          "legend": "Not clean",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Raw Capacity",
+      "title": "Raw Capacity",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "UsedBytes",
+          "datapointName": "UsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "FreeSpace",
+          "datapointName": "FreeSpace",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Capacity",
+          "datapointName": "Capacity",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "FreeSpace",
+          "legend": "Free",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Capacity",
+          "legend": "Total",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Raw Capacity Used",
+      "title": "Raw Capacity Used",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "UsedPercent",
+          "datapointName": "UsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Monitors",
+      "title": "Monitors",
+      "verticalLabel": "monitors",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 7,
+      "datapoints": [
+        {
+          "name": "MonitorsTotal",
+          "datapointName": "MonitorsTotal",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MonitorsInQuorum",
+          "datapointName": "MonitorsInQuorum",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MonitorsTotal",
+          "legend": "Total",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MonitorsInQuorum",
+          "legend": "In quorum",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ]
+}

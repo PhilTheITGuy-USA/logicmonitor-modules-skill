@@ -225,11 +225,18 @@ def check_scripts(module: dict, scripts: dict[str, tuple[str, str]], kind: str,
             report.warn(f"{slot} script has no '//!/lib-groovy/v4' first line to pin Groovy 4")
         # A snippet loaded without the script's binding runs detached from it: emit.dp()
         # then exits 0 and prints nothing the Collector can see. [LM recipes]
-        if "Snippets.getLoader()" in text and not re.search(
-                r"\.withBinding\(\s*(getBinding\(\)|binding)\s*\)|\.binding\s*=\s*binding", text):
+        # Checked per loader, not per script: one bound loader must not excuse another
+        # unbound one in the same script (the v2 fixtures showed the hole, 2026-10-27).
+        for line in text.splitlines():
+            if not SNIPPET_LOADER.search(line) or SNIPPET_BOUND.search(line):
+                continue
+            var = re.match(r"\s*(?:def\s+)?(\w+)\s*=", line)
+            if var and re.search(rf"\b{var.group(1)}\.binding\s*=\s*binding", text):
+                continue
             report.error(f"{slot} script loads Collector snippets without "
                          f".withBinding(getBinding()) -- emit.dp() and friends will exit 0 "
                          f"and print nothing the Collector can parse")
+            break
 
     groovy_text = "\n".join(groovy.values())
     if re.search(r"\.(push|pop)\(", groovy_text):
@@ -430,6 +437,8 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
                     "'wildvalue##name' form, but instance properties need it")
 
 
+SNIPPET_LOADER = re.compile(r"\b[Ss]nippets\.getLoader\(\)")
+SNIPPET_BOUND = re.compile(r"\.withBinding\(\s*(getBinding\(\)|binding)\s*\)")
 STATUS_NAME_TOKEN = "##ALERTVALUEDISPLAYSTATUSNAME##"
 STATUS_OPERATORS = ("EQ",)
 

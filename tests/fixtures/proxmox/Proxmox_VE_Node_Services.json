@@ -1,0 +1,175 @@
+{
+  "name": "Proxmox_VE_Node_Services",
+  "displayedAs": "Proxmox VE Node Services",
+  "description": "systemd state of this node's Proxmox-managed services: pveproxy, pvedaemon, pve-cluster, corosync and the rest.",
+  "appliesTo": "hasCategory(\"ProxmoxVE_Node\") && pve.netscan.reachable != \"false\"",
+  "technicalNotes": "BatchScript, one /nodes/{node}/services call to this node per interval. The node is asked directly, at this resource's own hostname, and never through another node: another node would answer for itself. Requires Sys.Audit on /nodes/{node}.\n\nThree separate systemd notions are reported rather than collapsed into one up/down, because the distinction is what tells you whether to act: active-state is what the process is doing now (active, inactive, failed), unit-state is what systemd is configured to do (enabled, disabled, not-found), and the substate is the detail. A service that is inactive because it is deliberately disabled is a different situation from one that has failed, which is different again from one that is not installed on this node. Alerting on Running alone would page for all three.\n\nOnly Failed carries a threshold. Running deliberately does not: several Proxmox services are legitimately inactive on a standalone host or on a node not participating in a given feature, and alerting on them would produce exactly the noise that gets a suite disabled.\n\nA node that does not answer fails the run; instances discovered previously survive, because deleteInactiveInstances is false.\n\nApplies on ProxmoxVE_Node resources the NetScan has not marked unreachable (pve.netscan.reachable). The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.",
+  "searchKeywords": "proxmox,pve,service,systemd,pveproxy,pvedaemon,corosync,pve-cluster",
+  "group": "Proxmox VE",
+  "collectionMethod": "batchscript",
+  "collectionInterval": "5m",
+  "collectionAttrs": {
+    "type": "groovy",
+    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveActiveBase = null\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ntry {\n    def nodeName = pveSelfNode()\n    def services = pveNodeGet('/nodes/' + nodeName + '/services') ?: []\n    services.each { service ->\n        def name = service.name?.toString() ?: service.service?.toString()\n        if (!name) { return }\n        def id = nodeName + '/' + name\n        def activeState = service.get('active-state')?.toString() ?: 'unknown'\n        def unitState = service.get('unit-state')?.toString() ?: 'unknown'\n        pveEmit(id, 'Running', activeState == 'active' ? 1 : 0)\n        pveEmit(id, 'Failed', activeState == 'failed' ? 1 : 0)\n        pveEmit(id, 'Enabled', unitState == 'enabled' ? 1 : 0)\n        pveEmit(id, 'Installed', unitState == 'not-found' ? 0 : 1)\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox service collection failed: ' + exception.message)\n    return 2\n}\n"
+  },
+  "multiInstance": true,
+  "useWildValueAsUniqueIdentifier": true,
+  "dataSourceType": 1,
+  "type": 0,
+  "datapoints": [
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Running",
+      "description": "1 when systemd reports the service as active. Ships without a threshold: several Proxmox services are legitimately inactive on a standalone host.",
+      "interpretExpr": "##WILDVALUE##.Running"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 2,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Failed",
+      "description": "1 when systemd reports the service as failed, as opposed to merely stopped.",
+      "threshold": "> 0 0 0",
+      "alertBody": "The Proxmox service ##INSTANCE## is in systemd's failed state on this node. A failed service has exited abnormally, which is distinct from being deliberately stopped or disabled.\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##).",
+      "statusDisplayNames": [
+        {
+          "statusDisplayName": "Not failed",
+          "metricValue": "0",
+          "operator": "EQ"
+        },
+        {
+          "statusDisplayName": "Failed",
+          "metricValue": "1",
+          "operator": "EQ"
+        }
+      ],
+      "interpretExpr": "##WILDVALUE##.Failed"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Enabled",
+      "description": "1 when the systemd unit is enabled to start at boot.",
+      "interpretExpr": "##WILDVALUE##.Enabled"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Installed",
+      "description": "0 when systemd has no such unit on this node, which is normal for services tied to features the node does not run.",
+      "interpretExpr": "##WILDVALUE##.Installed"
+    }
+  ],
+  "graphs": [
+    {
+      "name": "Service State",
+      "title": "Service State",
+      "verticalLabel": "1 = yes",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "Running",
+          "datapointName": "Running",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Failed",
+          "datapointName": "Failed",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Enabled",
+          "datapointName": "Enabled",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "Installed",
+          "datapointName": "Installed",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Running",
+          "legend": "Running",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Failed",
+          "legend": "Failed",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Enabled",
+          "legend": "Enabled at boot",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "Installed",
+          "legend": "Installed",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 1
+    }
+  ],
+  "activeDiscovery": {
+    "enabled": true,
+    "discoveryMethod": "ad_script",
+    "params": {
+      "type": "groovy",
+      "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveActiveBase = null\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveDisplayName = { value ->\n    (value == null ? '' : value.toString()).replaceAll('#', ' ').trim()\n}\ndef pvePropValue = { value ->\n    URLEncoder.encode(value == null ? '' : value.toString(), 'UTF-8')\n}\ndef pveDiscover = { String id, String name, String description, Map properties,\n                    Map rawProperties = [:] ->\n    def pairs = properties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> 'auto.' + key + '=' + pvePropValue(value) }\n    pairs += rawProperties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> key + '=' + pvePropValue(value) }\n    println(pveWildValue(id) + '##' + pveDisplayName(name ?: id) + '##' +\n            pveDisplayName(description) + '####' + pairs.join('&'))\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ntry {\n    def nodeName = pveSelfNode()\n    def services = pveNodeGet('/nodes/' + nodeName + '/services') ?: []\n    services.each { service ->\n        def name = service.name?.toString() ?: service.service?.toString()\n        if (!name) { return }\n        pveDiscover(\n            nodeName + '/' + name,\n            nodeName + ' ' + name,\n            (service.desc?.toString() ?: name) + ' on ' + nodeName,\n            [\n                pve_node    : nodeName,\n                pve_service : name,\n                pve_unit    : service.service,\n                pve_desc    : service.desc\n            ]\n        )\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox service discovery failed: ' + exception.message)\n    return 2\n}\n"
+    },
+    "discoveryInterval": "1440m",
+    "deleteInactiveInstances": false,
+    "autoDeleteInstances": false,
+    "disableDiscoveredInstances": false,
+    "groupMethod": "ilp",
+    "filters": [],
+    "groupExpr": "auto.pve_node"
+  }
+}

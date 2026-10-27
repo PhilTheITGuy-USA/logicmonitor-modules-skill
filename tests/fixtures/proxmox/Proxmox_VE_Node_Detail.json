@@ -1,0 +1,1035 @@
+{
+  "name": "Proxmox_VE_Node_Detail",
+  "displayedAs": "Proxmox VE Node Detail",
+  "description": "This node's CPU, memory, uptime, load, swap, root filesystem, pressure stall figures and its own view of cluster quorum, asked of the node itself.",
+  "appliesTo": "hasCategory(\"ProxmoxVE_Node\") && pve.netscan.reachable != \"false\"",
+  "technicalNotes": "Script collection on the node's own resource: three calls to this node per interval -- /nodes/{node}/status, /nodes/{node}/rrddata and /cluster/status. The node is asked directly, at the resource's own hostname, and never through another node, which would answer for itself. A node that does not answer fails the run.\n\nCPU, memory and uptime are the node's own figures, so their alerts are raised, routed and silenced on the node.\n\nLoadPerCore normalises load average by logical CPU count so a single threshold is meaningful across differently sized nodes. Proxmox returns load average values as strings; the script coerces them explicitly.\n\nThe Pressure datapoints are Linux pressure stall information: the percent of time some (or, for Full, all) tasks waited for CPU, IO or memory, per-minute averages from rrddata. Pressure is the clearest single measure of a node that cannot keep up. Each is withheld where the node does not report it.\n\nQuorate and NodesOnline are this node's own view of the cluster. Quorate alerts when this node has lost quorum; NodesOnline is recorded without a threshold, since the cluster modules alert on nodes going offline and one copy of that alert per node would bury it. Both are withheld on a standalone host, which has no quorum to lose.\n\nApplies on ProxmoxVE_Node resources the NetScan has not marked unreachable (pve.netscan.reachable). The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.\n\nRequires Sys.Audit on /nodes/{node} for status and rrddata, and on / for /cluster/status; the PVEAuditor role includes both.\n\nUnits: memory, swap, root filesystem and KSM in bytes, as Proxmox reports them; uptime in seconds. MB and GB are decimal (10^6 and 10^9 bytes); the product page states the suite's convention.",
+  "searchKeywords": "proxmox,pve,node,load,swap,rootfs,filesystem",
+  "group": "Proxmox VE",
+  "collectionMethod": "script",
+  "collectionInterval": "5m",
+  "collectionAttrs": {
+    "type": "groovy",
+    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveActiveBase = null\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pvePercent = { used, total ->\n    def totalValue = (total ?: 0) as double\n    totalValue > 0 ? pveRound(((used ?: 0) as double) * 100.0d / totalValue) : 0\n}\ndef pveLatestRrd = { List rows ->\n    (rows ?: []).findAll { it?.cpu != null }.with { it ? it[-1] : null }\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ntry {\n    def node = pveSelfNode()\n    def status = pveNodeGet('/nodes/' + node + '/status') ?: [:]\n    def swap = status.swap ?: [:]\n    def rootfs = status.rootfs ?: [:]\n    def memory = status.memory ?: [:]\n    def cpuInfo = status.cpuinfo ?: [:]\n    pveEmit(null, 'CPUUsagePercent', pveRound(((status.cpu ?: 0) as double) * 100.0d))\n    pveEmit(null, 'CPUCount', cpuInfo.cpus ?: 0)\n    pveEmit(null, 'MemoryUsedBytes', memory.used ?: 0)\n    pveEmit(null, 'MemoryCapacityBytes', memory.total ?: 0)\n    pveEmit(null, 'MemoryUsagePercent', pvePercent(memory.used, memory.total))\n    pveEmit(null, 'UpTimeSeconds', status.uptime ?: 0)\n    def load = (status.loadavg ?: []).collect { it == null ? 0.0d : it.toString().toDouble() }\n    pveEmit(null, 'LoadAverage1m', load.size() > 0 ? load[0] : 0)\n    pveEmit(null, 'LoadAverage5m', load.size() > 1 ? load[1] : 0)\n    pveEmit(null, 'LoadAverage15m', load.size() > 2 ? load[2] : 0)\n    def cpuCount = cpuInfo.cpus ?: 0\n    pveEmit(null, 'CPUSockets', cpuInfo.sockets ?: 0)\n    pveEmit(null, 'CPUCores', cpuInfo.cores ?: 0)\n    pveEmit(null, 'LoadPerCore', cpuCount ? pveRound((load ? load[0] : 0.0d) / (cpuCount as double)) : 0)\n    pveEmit(null, 'SwapUsedBytes', swap.used ?: 0)\n    pveEmit(null, 'SwapCapacityBytes', swap.total ?: 0)\n    pveEmit(null, 'SwapUsagePercent', pvePercent(swap.used, swap.total))\n    pveEmit(null, 'RootFSUsedBytes', rootfs.used ?: 0)\n    pveEmit(null, 'RootFSCapacity', rootfs.total ?: 0)\n    pveEmit(null, 'RootFSFreeSpace', rootfs.avail ?: 0)\n    pveEmit(null, 'RootFSUsedPercent', pvePercent(rootfs.used, rootfs.total))\n    pveEmit(null, 'IOWaitPercent', pveRound(((status.wait ?: 0) as double) * 100.0d))\n    def ksm = status.ksm ?: [:]\n    if (ksm.shared != null) {\n        pveEmit(null, 'KSMSharedBytes', ksm.shared)\n    }\n    def rrd = pveLatestRrd(pveNodeGet('/nodes/' + node + '/rrddata?timeframe=hour&cf=AVERAGE') ?: [])\n    def pressure = { String field -> rrd?.get(field) != null ? pveRound(rrd[field] as double) : null }\n    if (pressure('pressurecpusome') != null) { pveEmit(null, 'PressureCPUSomePercent', pressure('pressurecpusome')) }\n    if (pressure('pressureiosome') != null) { pveEmit(null, 'PressureIOSomePercent', pressure('pressureiosome')) }\n    if (pressure('pressureiofull') != null) { pveEmit(null, 'PressureIOFullPercent', pressure('pressureiofull')) }\n    if (pressure('pressurememorysome') != null) { pveEmit(null, 'PressureMemorySomePercent', pressure('pressurememorysome')) }\n    if (pressure('pressurememoryfull') != null) { pveEmit(null, 'PressureMemoryFullPercent', pressure('pressurememoryfull')) }\n    def clusterStatus = pveNodeGet('/cluster/status') ?: []\n    def clusterRow = clusterStatus.find { it.type?.toString() == 'cluster' }\n    if (clusterRow) {\n        pveEmit(null, 'Quorate', clusterRow.quorate?.toString() == '1' ? 1 : 0)\n        pveEmit(null, 'NodesOnline',\n                clusterStatus.count { it.type?.toString() == 'node' && it.online?.toString() == '1' })\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox node detail collection failed: ' + exception.message)\n    return 2\n}\n"
+  },
+  "multiInstance": false,
+  "useWildValueAsUniqueIdentifier": false,
+  "dataSourceType": 1,
+  "type": 0,
+  "datapoints": [
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 3,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "CPUUsagePercent",
+      "description": "Node CPU utilisation, percent.",
+      "threshold": "> 85 92 97",
+      "alertBody": "Proxmox node ##HOSTNAME## is at ##VALUE##% CPU. Its guests are competing for CPU time; consider migrating some to a less busy node.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "CPUUsagePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "CPUCount",
+      "description": "Logical CPUs available to the node.",
+      "interpretExpr": "CPUCount"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "MemoryUsedBytes",
+      "description": "Memory in use, bytes.",
+      "interpretExpr": "MemoryUsedBytes"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "MemoryCapacityBytes",
+      "description": "Total memory, bytes.",
+      "interpretExpr": "MemoryCapacityBytes"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 3,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "MemoryUsagePercent",
+      "description": "Memory utilisation, percent.",
+      "threshold": "> 85 92 97",
+      "alertBody": "Proxmox node ##HOSTNAME## is using ##VALUE##% of its memory. Close to the limit the host starts swapping or killing processes, guests included.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "MemoryUsagePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "UpTimeSeconds",
+      "description": "Seconds since the node booted.",
+      "interpretExpr": "UpTimeSeconds"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureCPUSomePercent",
+      "description": "Percent of time some tasks waited for CPU, 1-minute average. Withheld where the node does not report pressure.",
+      "interpretExpr": "PressureCPUSomePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureIOSomePercent",
+      "description": "Percent of time some tasks waited for IO, 1-minute average. Withheld where the node does not report pressure.",
+      "interpretExpr": "PressureIOSomePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureIOFullPercent",
+      "description": "Percent of time every task waited for IO at once, 1-minute average. Withheld where the node does not report pressure.",
+      "interpretExpr": "PressureIOFullPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureMemorySomePercent",
+      "description": "Percent of time some tasks waited for memory, 1-minute average. Withheld where the node does not report pressure.",
+      "interpretExpr": "PressureMemorySomePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureMemoryFullPercent",
+      "description": "Percent of time every task waited for memory at once, 1-minute average. Withheld where the node does not report pressure.",
+      "interpretExpr": "PressureMemoryFullPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "Quorate",
+      "description": "1 when this node is part of a quorate cluster, by its own view. Withheld on a standalone host.",
+      "threshold": "< 1 1 1",
+      "alertBody": "Proxmox node ##HOSTNAME## has lost quorum. It is cut off from the majority of its cluster: it stops starting, migrating or changing guests until quorum returns.\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##).\n\nThis started at ##START##, ##DURATION## ago.",
+      "statusDisplayNames": [
+        {
+          "statusDisplayName": "Not quorate",
+          "metricValue": "0",
+          "operator": "EQ"
+        },
+        {
+          "statusDisplayName": "Quorate",
+          "metricValue": "1",
+          "operator": "EQ"
+        }
+      ],
+      "interpretExpr": "Quorate"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "NodesOnline",
+      "description": "Cluster members online, by this node's own view. Withheld on a standalone host.",
+      "interpretExpr": "NodesOnline"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "LoadAverage1m",
+      "description": "1 minute load average.",
+      "interpretExpr": "LoadAverage1m"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "LoadAverage5m",
+      "description": "5 minute load average.",
+      "interpretExpr": "LoadAverage5m"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "LoadAverage15m",
+      "description": "15 minute load average.",
+      "interpretExpr": "LoadAverage15m"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 3,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "LoadPerCore",
+      "description": "1 minute load average divided by logical CPU count.",
+      "threshold": "> 1.5 2 4",
+      "alertBody": "Proxmox node ##HOSTNAME## has a load of ##VALUE## per core.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "LoadPerCore"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "SwapUsedBytes",
+      "description": "Swap in use, bytes.",
+      "interpretExpr": "SwapUsedBytes"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "SwapCapacityBytes",
+      "description": "Total swap, bytes.",
+      "interpretExpr": "SwapCapacityBytes"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 5,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "SwapUsagePercent",
+      "description": "Swap utilisation, percent. Sustained swap use on a hypervisor indicates memory overcommit.",
+      "threshold": "> 25 50 80",
+      "alertBody": "Proxmox node ##HOSTNAME## is using ##VALUE##% of its swap. Sustained swap on a hypervisor means memory is overcommitted, and every guest on the node slows down.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "SwapUsagePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "RootFSUsedBytes",
+      "description": "Root filesystem used, bytes.",
+      "interpretExpr": "RootFSUsedBytes"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "RootFSCapacity",
+      "description": "Root filesystem size, bytes.",
+      "interpretExpr": "RootFSCapacity"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "RootFSFreeSpace",
+      "description": "Root filesystem free, bytes.",
+      "interpretExpr": "RootFSFreeSpace"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "RootFSUsedPercent",
+      "description": "Root filesystem utilisation, percent. A full root filesystem stops pvedaemon accepting work.",
+      "threshold": "> 80 90 95",
+      "alertBody": "The root filesystem on Proxmox node ##HOSTNAME## is ##VALUE##% full.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "RootFSUsedPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "CPUSockets",
+      "description": "Physical CPU sockets populated on the node.",
+      "interpretExpr": "CPUSockets"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "CPUCores",
+      "description": "Physical CPU cores per socket.",
+      "interpretExpr": "CPUCores"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 5,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "IOWaitPercent",
+      "description": "Percent of CPU time spent waiting on IO. Sustained IO wait means storage, not CPU, is the constraint.",
+      "threshold": "> 20 35 50",
+      "alertBody": "Proxmox node ##HOSTNAME## is spending ##VALUE##% of its CPU time waiting on disk IO. Storage, not CPU, is the bottleneck, and guests on this node will be slow to read and write.\n\nThis started at ##START##, ##DURATION## ago.",
+      "interpretExpr": "IOWaitPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "KSMSharedBytes",
+      "description": "Memory reclaimed by kernel same-page merging, bytes. Absent when KSM is disabled on the node, which is why it is not reported as zero.",
+      "interpretExpr": "KSMSharedBytes"
+    }
+  ],
+  "graphs": [
+    {
+      "name": "CPU Usage",
+      "title": "CPU Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 1,
+      "datapoints": [
+        {
+          "name": "CPUUsagePercent",
+          "datapointName": "CPUUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUUsagePercent",
+          "legend": "CPU",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "CPUs",
+      "title": "CPUs",
+      "verticalLabel": "CPUs",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 2,
+      "datapoints": [
+        {
+          "name": "CPUCount",
+          "datapointName": "CPUCount",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUCount",
+          "legend": "Logical CPUs",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Memory",
+      "title": "Memory",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 3,
+      "datapoints": [
+        {
+          "name": "MemoryUsedBytes",
+          "datapointName": "MemoryUsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "MemoryCapacityBytes",
+          "datapointName": "MemoryCapacityBytes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MemoryUsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "MemoryCapacityBytes",
+          "legend": "Total",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Memory Usage",
+      "title": "Memory Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 4,
+      "datapoints": [
+        {
+          "name": "MemoryUsagePercent",
+          "datapointName": "MemoryUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MemoryUsagePercent",
+          "legend": "Memory",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Uptime",
+      "title": "Uptime",
+      "verticalLabel": "seconds",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 5,
+      "datapoints": [
+        {
+          "name": "UpTimeSeconds",
+          "datapointName": "UpTimeSeconds",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "UpTimeSeconds",
+          "legend": "Since boot",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Pressure Stall",
+      "title": "Pressure Stall",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 6,
+      "datapoints": [
+        {
+          "name": "PressureCPUSomePercent",
+          "datapointName": "PressureCPUSomePercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureIOSomePercent",
+          "datapointName": "PressureIOSomePercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureIOFullPercent",
+          "datapointName": "PressureIOFullPercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureMemorySomePercent",
+          "datapointName": "PressureMemorySomePercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureMemoryFullPercent",
+          "datapointName": "PressureMemoryFullPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "PressureCPUSomePercent",
+          "legend": "CPU some",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureIOSomePercent",
+          "legend": "IO some",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureIOFullPercent",
+          "legend": "IO full",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureMemorySomePercent",
+          "legend": "Memory some",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureMemoryFullPercent",
+          "legend": "Memory full",
+          "color": "fuchsia",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Cluster View",
+      "title": "Cluster View",
+      "verticalLabel": "count",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 7,
+      "datapoints": [
+        {
+          "name": "Quorate",
+          "datapointName": "Quorate",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "NodesOnline",
+          "datapointName": "NodesOnline",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "Quorate",
+          "legend": "Quorate (1 = yes)",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "NodesOnline",
+          "legend": "Nodes online",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Load Average",
+      "title": "Load Average",
+      "verticalLabel": "load",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 8,
+      "datapoints": [
+        {
+          "name": "LoadAverage1m",
+          "datapointName": "LoadAverage1m",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "LoadAverage5m",
+          "datapointName": "LoadAverage5m",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "LoadAverage15m",
+          "datapointName": "LoadAverage15m",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "LoadAverage1m",
+          "legend": "1 minute",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "LoadAverage5m",
+          "legend": "5 minutes",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "LoadAverage15m",
+          "legend": "15 minutes",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Load per Core",
+      "title": "Load per Core",
+      "verticalLabel": "load",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 9,
+      "datapoints": [
+        {
+          "name": "LoadPerCore",
+          "datapointName": "LoadPerCore",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "LoadPerCore",
+          "legend": "1 minute, per core",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "IO Wait",
+      "title": "IO Wait",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 10,
+      "datapoints": [
+        {
+          "name": "IOWaitPercent",
+          "datapointName": "IOWaitPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "IOWaitPercent",
+          "legend": "IO wait",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Swap",
+      "title": "Swap",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 11,
+      "datapoints": [
+        {
+          "name": "SwapUsedBytes",
+          "datapointName": "SwapUsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "SwapCapacityBytes",
+          "datapointName": "SwapCapacityBytes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SwapUsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "SwapCapacityBytes",
+          "legend": "Total",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Swap Usage",
+      "title": "Swap Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 12,
+      "datapoints": [
+        {
+          "name": "SwapUsagePercent",
+          "datapointName": "SwapUsagePercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "SwapUsagePercent",
+          "legend": "Swap",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Root Filesystem",
+      "title": "Root Filesystem",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 13,
+      "datapoints": [
+        {
+          "name": "RootFSUsedBytes",
+          "datapointName": "RootFSUsedBytes",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "RootFSFreeSpace",
+          "datapointName": "RootFSFreeSpace",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "RootFSCapacity",
+          "datapointName": "RootFSCapacity",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "RootFSUsedBytes",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "RootFSFreeSpace",
+          "legend": "Free",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "RootFSCapacity",
+          "legend": "Size",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Root Filesystem Usage",
+      "title": "Root Filesystem Usage",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 14,
+      "datapoints": [
+        {
+          "name": "RootFSUsedPercent",
+          "datapointName": "RootFSUsedPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "RootFSUsedPercent",
+          "legend": "Used",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "KSM Shared Memory",
+      "title": "KSM Shared Memory",
+      "verticalLabel": "bytes",
+      "min": 0,
+      "rigid": false,
+      "scale1024": true,
+      "timeScale": "1day",
+      "displayPriority": 15,
+      "datapoints": [
+        {
+          "name": "KSMSharedBytes",
+          "datapointName": "KSMSharedBytes",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "KSMSharedBytes",
+          "legend": "Reclaimed by KSM",
+          "color": "fuchsia",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "CPU Topology",
+      "title": "CPU Topology",
+      "verticalLabel": "count",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 16,
+      "datapoints": [
+        {
+          "name": "CPUSockets",
+          "datapointName": "CPUSockets",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "CPUCores",
+          "datapointName": "CPUCores",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "CPUSockets",
+          "legend": "Sockets",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "CPUCores",
+          "legend": "Cores per socket",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    }
+  ]
+}
