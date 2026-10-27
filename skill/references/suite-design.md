@@ -217,7 +217,24 @@ has no address (Proxmox ships no VIP).
   - "Exclude duplicate IP addresses: Matching any Monitored Resources" (the default) compares the
     emitted hostname *as written*: an entry whose hostname is an existing resource's IP is
     excluded, but its reverse-DNS name is not, and becomes a duplicate. Keep emitted hostnames as
-    IPs, or compare addresses in the script. The exclusion skips; it never updates the match;
+    IPs, or compare addresses in the script. It does not stop the NetScan updating resources it
+    created **[portal, 2026-10-26]**; its options are *Matching any monitored resources*, *…already
+    discovered by this NetScan*, *…in these resource groups*, *…currently assigned to these
+    Collectors* -- no "off": select *in these resource groups* with no group;
+  - **adopting a device the NetScan did not create** (one monitored over SNMP, say) needs
+    *Criteria for updating Existing Resources* = *All matching resources* and the script to emit it
+    under that device's own hostname. The device then gains the emitted properties, categories
+    (merged with its own) and group, and keeps its ID and history **[portal, 2026-10-26]**. Under
+    the default criteria nothing happens and nothing says so. Give it a stable id property, and on
+    later runs keep its portal display name: matched by that id, a script that lets its own name
+    win renames the device;
+  - **a manual save of a resource detaches it from its NetScan** (the audit log resets
+    `scanConfigId` to 0); the NetScan still updates it. **The audit log is not a record of a
+    NetScan's updates** (some appear as `System:Netscan` with `NSE=<execution>`, most not), and
+    `system.resourceUpdatedOn` does not change on one: to see whether a run updated a resource,
+    have it change a value and read the resource. The audit stores dropdown choices as `type=<n>`,
+    the option's 1-based position in the list, and NetScan property edits without detail
+    **[portal, 2026-10-26]**;
   - a Dry Run reports counts (Scanned / Found / Added) and fills in over a minute or two,
     duplicates first, so a first look under-counts;
   - a resource deleted and then re-emitted comes back **with its old properties and categories**
