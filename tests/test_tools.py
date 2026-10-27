@@ -152,6 +152,22 @@ def dashboard_mutations() -> dict[str, dict]:
     m["table row uses deviceGroupFullPath"] = x
     x = copy.deepcopy(tier1); first(x, "cgraph")["graphInfo"]["dataPoints"][0]["instanceName"] = "*"
     m["cgraph scope as a plain string"] = x
+    x = copy.deepcopy(tier1); first(x, "cgraph")["displayClearedAlert"] = True
+    m["noc-only portal key on a cgraph"] = x
+    return m
+
+
+def dashboard_portal_export_keys() -> dict[str, dict]:
+    """Keys a release-246 portal writes into its own export: must pass cleanly."""
+    tier1 = json.loads((GOOD / "dashboards" / "Proxmox_VE_Tier1.json").read_text(encoding="utf-8"))
+    m = {}
+    x = copy.deepcopy(tier1)
+    for widget in x["widgets"]:
+        widget["config"]["isSupportCustomProperty"] = False
+        widget["config"]["supportCustomProperty"] = False
+        if widget["config"]["type"] == "noc":
+            widget["config"]["displayClearedAlert"] = True
+    m["isSupportCustomProperty, supportCustomProperty, noc displayClearedAlert"] = x
     return m
 
 
@@ -340,6 +356,12 @@ def main() -> int:
             r = run(DASH + [str(path), "--modules", str(GOOD)])
             expect(f"dashboard check warns but passes: {name}",
                    r.returncode == 0 and "WARN" in r.stdout, r.stdout)
+        for name, dash in dashboard_portal_export_keys().items():
+            path = Path(tmp) / "d.json"
+            path.write_text(json.dumps(dash), encoding="utf-8")
+            r = run(DASH + [str(path), "--modules", str(GOOD)])
+            expect(f"dashboard check passes a portal export's keys: {name}",
+                   r.returncode == 0, r.stdout)
 
     print(f"\n{'ALL PASSED' if not failures else f'{len(failures)} FAILED'}")
     return 1 if failures else 0

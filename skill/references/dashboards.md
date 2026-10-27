@@ -55,6 +55,12 @@ start from a portal export of one.
 - **noc**: `ackChecked, description, displayColumn, displayCriticalAlert, displayErrorAlert, displaySettings, displayWarnAlert, interval, items, name, sdtChecked, sortBy, theme, timescale, type, version`
 - **alert**: `description, displaySettings, filters, interval, name, theme, timescale, type, version`
 
+A current portal's own export adds keys on top of these (**portal-confirmed**, santabaRelease 246,
+Proxmox v2 dashboards exported 2026-10-27): `isSupportCustomProperty` and `supportCustomProperty`
+(both `false`) on every widget, and `displayClearedAlert` (`true`) on `noc`. `lm_dashboards.py
+check` accepts them as optional, so a re-export checks clean; the builder doesn't emit them, since
+the reference key sets import without them.
+
 Second tier (from LM's templates, **[LM recipes]**):
 - **gauge**: `colorThresholds, dataPoint, description, displaySettings, displayType, displayUnit, interval, legend, maxValue, minValue, name, peakTimeRange, showPeak, theme, timescale, type, version` — `dataPoint` is a single object
 - **pieChart**: `description, displaySettings, interval, name, pieChartInfo, theme, timescale, type, version` — `pieChartInfo` holds both `dataPoints[]` (module + scope) and `pieChartItems[]` (slices by `dataPointName`, `color`, `legend`)

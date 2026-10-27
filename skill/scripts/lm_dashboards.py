@@ -122,6 +122,13 @@ UNVERIFIED_KEYS: dict[str, set[str]] = {
         "sdtChecked", "theme", "timescale", "type", "version",
     },
 }
+# Keys a current portal writes into its own export (santabaRelease 246, Proxmox v2
+# dashboards exported 2026-10-27) on top of the reference set: optional, accepted on a
+# portal export, never emitted by the builder. "*" applies to every widget type.
+PORTAL_EXPORT_KEYS: dict[str, set[str]] = {
+    "*": {"isSupportCustomProperty", "supportCustomProperty"},
+    "noc": {"displayClearedAlert"},
+}
 UNVERIFIED_THEMES = (
     "borderPurple", "borderGray", "borderBlue", "solidPurple", "solidGray", "solidBlue",
     "simplePurple", "simpleBlue", "simpleGray", "newBorderGray", "newBorderBlue",
@@ -512,8 +519,9 @@ def check_dashboard(label: str, dashboard: dict,
             problems.append(f"{label}: {name!r} has widget type {kind!r}, which appears "
                             f"in no reference export")
             continue
-        if set(config) != expected:
-            extra = sorted(set(config) - expected)
+        allowed = expected | PORTAL_EXPORT_KEYS.get(kind, set()) | PORTAL_EXPORT_KEYS["*"]
+        if not expected <= set(config) <= allowed:
+            extra = sorted(set(config) - allowed)
             missing = sorted(expected - set(config))
             problems.append(f"{label}: {name!r} ({kind}) key set differs from the "
                             f"reference export -- extra={extra} missing={missing}")
