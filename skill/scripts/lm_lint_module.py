@@ -359,6 +359,7 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
 
     check_active_discovery(module, report)
     check_graphs(module, report)
+    check_instance_ert(scripts, report)
 
     names: list[str] = []
     for dp in datapoints:
@@ -517,6 +518,17 @@ def check_graphs(module: dict, report: Report) -> None:
 # emitEri('<category>', <priority>, <keys>, <ERT>, ...) -- the ERT as a literal or a variable.
 EMIT_ERI = re.compile(r"""emitEri\(\s*(['"])([^'"]*)\1\s*,\s*(\d+)\s*,\s*"""
                       r"""(?:\[[^\]]*\]|[^,()]+)\s*,\s*(?:(['"])([^'"]*)\4|(\w+))""")
+
+
+def check_instance_ert(scripts: dict[str, tuple[str, str]], report: Report) -> None:
+    # A store vertex carried by DataSource instances as VMDatastore resolved to its instances
+    # but took none of the edges a TopologySource printed for it, before and after the
+    # instances were rediscovered; retyped StorageVolume, every edge drew [portal, 2026-10-28].
+    lang, text = scripts.get("discovery", ("", ""))
+    if re.search(r"""['"]VMDatastore['"]""", text):
+        report.warn("discovery sets the instance ERT 'VMDatastore': a VMDatastore vertex carried by "
+                    "a DataSource instance took no edges on a portal; StorageVolume (or "
+                    "StorageAggregate for a pool) draws them")
 
 
 def check_eri_priority(text: str, report: Report) -> None:

@@ -321,6 +321,18 @@ Behaviour **[portal]**:
   "??") was drawn with edges to both nodes. So guests and clusters need no resources of their own.
   An earlier run that joined the cluster to A only was confounded by an unmatched node vertex (the
   multi-key rule above): when an edge is missing, check both ends match before blaming the instance.
+- **A `VMDatastore` vertex carried by a DataSource instance takes no edges** **[portal,
+  2026-10-28]**. Store vertices stamped `VMDatastore` on a capacity DataSource's instances resolved
+  to those instances, yet took none of the edges the TopologySource printed for them (Test Script
+  listed every one) -- before and after the instances were deleted and rediscovered -- while pool
+  vertices stamped `StorageAggregate` on the same kind of carrier took theirs. Retyped
+  `StorageVolume`, with nothing else changed, every edge drew. LM's own vSphere datastores draw as
+  "??" on vSphere maps, plausibly the same cause **[inferred]**. Type a store `StorageVolume`;
+  `StorageAggregate`, `StorageNode`, `PhysicalDisk` and `VirtualSwitch` instance vertices all took
+  edges on the same portal. `lm_lint_module.py` warns on `'VMDatastore'` in a discovery script.
+- **Changing a carrier's ERT did not change an existing vertex's type** **[portal, 2026-10-28,
+  unexplained]**: a cluster instance retyped from `Cluster` to `HyperVisorCluster` still drew as
+  `Cluster` after rediscovery and several topology runs. Choose the ERT before the first run.
 - Use a synthesised fallback key only for **permanent** absence (no NIC). On a transient read failure
   skip the edge — otherwise identity flips for one run.
 

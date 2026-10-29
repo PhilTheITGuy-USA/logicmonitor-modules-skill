@@ -322,6 +322,11 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     cap = next(g for g in x["graphs"] if g["title"] == "Capacity")
     next(l for l in cap["lines"] if l["color"] == "black")["color"] = "gray"
     m["graph colours gray and green together"] = (x, "read as")
+    # A VMDatastore vertex carried by DataSource instances took no edges; StorageVolume did
+    # [portal, 2026-10-28].
+    x = copy.deepcopy(load("Proxmox_VE_Cluster_StorageCapacity.json"))
+    x["activeDiscovery"]["params"]["content"] += "\ndef storeErt = 'VMDatastore'\n"
+    m["instance vertex typed VMDatastore"] = (x, "VMDatastore")
     return m
 
 
