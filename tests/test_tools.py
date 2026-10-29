@@ -327,6 +327,10 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(load("Proxmox_VE_Cluster_StorageCapacity.json"))
     x["activeDiscovery"]["params"]["content"] += "\ndef storeErt = 'VMDatastore'\n"
     m["instance vertex typed VMDatastore"] = (x, "VMDatastore")
+    # Likewise a cluster vertex typed HyperVisorCluster; Cluster drew it [portal, 2026-10-28].
+    x = copy.deepcopy(load("Proxmox_VE_Cluster_Status.json"))
+    x["activeDiscovery"]["params"]["content"] += "\nraw['predef.externalResourceType'] = 'HyperVisorCluster'\n"
+    m["instance vertex typed HyperVisorCluster"] = (x, "HyperVisorCluster")
     return m
 
 

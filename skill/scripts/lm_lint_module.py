@@ -520,15 +520,20 @@ EMIT_ERI = re.compile(r"""emitEri\(\s*(['"])([^'"]*)\1\s*,\s*(\d+)\s*,\s*"""
                       r"""(?:\[[^\]]*\]|[^,()]+)\s*,\s*(?:(['"])([^'"]*)\4|(\w+))""")
 
 
+# Instance ERTs whose vertices took no edges from a third-party TopologySource, and the type
+# that drew the same vertex with every edge [portal, 2026-10-28]: a store typed VMDatastore and
+# a cluster typed HyperVisorCluster each took none, before and after rediscovery; retyped, with
+# key and edges unchanged, every edge drew.
+REFUSED_INSTANCE_ERTS = {"VMDatastore": "StorageVolume (StorageAggregate for a pool)",
+                         "HyperVisorCluster": "Cluster"}
+
+
 def check_instance_ert(scripts: dict[str, tuple[str, str]], report: Report) -> None:
-    # A store vertex carried by DataSource instances as VMDatastore resolved to its instances
-    # but took none of the edges a TopologySource printed for it, before and after the
-    # instances were rediscovered; retyped StorageVolume, every edge drew [portal, 2026-10-28].
     lang, text = scripts.get("discovery", ("", ""))
-    if re.search(r"""['"]VMDatastore['"]""", text):
-        report.warn("discovery sets the instance ERT 'VMDatastore': a VMDatastore vertex carried by "
-                    "a DataSource instance took no edges on a portal; StorageVolume (or "
-                    "StorageAggregate for a pool) draws them")
+    for ert, instead in REFUSED_INSTANCE_ERTS.items():
+        if re.search(r"""['"]%s['"]""" % ert, text):
+            report.warn(f"discovery sets the instance ERT {ert!r}: a {ert} vertex carried by a "
+                        f"DataSource instance took no edges on a portal; {instead} draws them")
 
 
 def check_eri_priority(text: str, report: Report) -> None:
