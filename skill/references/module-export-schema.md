@@ -98,6 +98,14 @@ observed in a portal here.
 - Names: **PascalCase**, matching LM suites (`CPUUsagePercent`, `MemoryUsedMB`, `DataRateRxMB`,
   `UpTimeSeconds`, `UsedPercent`, `CapacityGB`, `Status`). Never rename a deployed datapoint —
   history doesn't follow, and dashboards drop the widget.
+- **An open alert outlives its datapoint** **[portal, 2026-10-29]**. An alert clears only when a
+  new value falls below the threshold, so a datapoint that stops being printed keeps every alert
+  it raised open indefinitely. Proxmox v2 moved LVM volume groups from `UsedPercent` (thresholded) to
+  an unthresholded `AllocatedPercent`. Both volume groups' `UsedPercent` criticals stayed
+  open for 15 hours of No Data on the fixed module, until the instances were deleted and Active
+  Discovery recreated them (same wildvalue, new instance, history lost). When a release stops
+  printing a thresholded datapoint for some instances, say in its upgrade notes that alerts
+  already open stay open and how to clear them.
 - **Status datapoints** — give the codes names so alerts read as words **[LM recipes; portal-confirmed
   2026-10-27]** (Proxmox v2: imported, shown on the datapoint, and an alert on a stopped guest
   read "Not running (0)"; only `"operator": "EQ"` has been seen):
