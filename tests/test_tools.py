@@ -98,6 +98,10 @@ def module_mutations() -> dict[str, dict]:
     m["TopologySource collectionAttrs as object"] = x
     x = copy.deepcopy(topo); x["type"] = "9"
     m["TopologySource type as string"] = x
+    # The import refused 900: "Invalid Duration offset, must be one of [1800, 3600, 14400,
+    # 43200]" [portal, 2026-10-29].
+    x = copy.deepcopy(topo); x["collectionIntervalSec"] = 900
+    m["TopologySource interval the portal refuses"] = x
     # The portal refused to save a TopologySource whose technicalNotes ran to 4302
     # characters: "Field value cannot contain more than 4096 characters" [portal].
     x = copy.deepcopy(topo); x["technicalNotes"] = "x" * 4097

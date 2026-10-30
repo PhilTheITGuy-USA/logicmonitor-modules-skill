@@ -130,8 +130,21 @@ wildvalue##displayName##description####auto.key=value&auto.key2=value2
   `emit.instance`, collection must use `emit.dp` (or the identical fold) — see §5.
 - An under-privileged credential against a "filtered by permission" endpoint returns an empty list,
   not an error. Detect "returned nothing" and say on stderr that it may be permissions.
+- **Put the server's own reason in a 401/403 message**, not a guess. A 403 is usually a valid
+  credential short of one privilege, and the API often names it: Proxmox's status line read
+  `403 Permission check failed (/, Sys.Modify)` for `/nodes/<node>/hardware/usb` while the same
+  token read everything else **portal-confirmed** (live target, 2026-10-29). A fixed "check the
+  token's secret" text sent the reader the wrong way; `connection.responseMessage` (or the error
+  body) settles it at once.
 - Filter out things that can never be healthy (templates, disabled placeholders) at discovery, not
   at alert time — otherwise they alert as permanently down.
+- **The AD Test Script shows only instance lines** **portal-confirmed** (2026-10-29). On a
+  non-zero exit it shows "The script returned non-zero exit code - 2" and nothing else, stderr
+  included; on exit 0 with no line in the format above it shows "There is nothing applied to the
+  selected resource", even when AppliesTo matches. To see what a script read on the Collector
+  (raw API replies, the exact error), have a debug switch print each finding as an instance,
+  `probe-N##<label>##<text>`, in pieces of about 200 characters, and exit 0. Turn the switch off
+  before the next scheduled discovery, or those instances are created for real.
 
 ## 5. Collection output: Script vs BatchScript
 

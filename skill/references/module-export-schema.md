@@ -290,7 +290,9 @@ From `VMware_vCenter_Cluster_Topology` / `VMware_vSphere_VirtualMachine_Topology
 ```
 
 `collectionAttrs` is a JSON-**encoded string** carrying every slot, empty ones included;
-`collectionIntervalSec` and `type` are integers.
+`collectionIntervalSec` and `type` are integers. **`collectionIntervalSec` must be 1800, 3600,
+14400 or 43200** — the import refused 900 with "Invalid Duration offset, must be one of [1800,
+3600, 14400, 43200]" **portal-confirmed** (2026-10-29), so a map changes at most every half hour.
 
 ## 6. Generating exports from a definition
 

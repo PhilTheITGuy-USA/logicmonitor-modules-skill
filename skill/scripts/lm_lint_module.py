@@ -603,12 +603,20 @@ def check_propertysource(module: dict, scripts: dict[str, tuple[str, str]],
                     "no stdout, or the suite applies itself to unrelated resources")
 
 
+TOPOLOGY_INTERVALS = (1800, 3600, 14400, 43200)
+
+
 def check_topologysource(module: dict, scripts: dict[str, tuple[str, str]],
                          report: Report) -> None:
     if module.get("type") != 9:
         report.error(f"TopologySource type is {module.get('type')!r}; exports carry the integer 9")
-    if not isinstance(module.get("collectionIntervalSec"), int):
+    interval = module.get("collectionIntervalSec")
+    if not isinstance(interval, int):
         report.error("collectionIntervalSec must be an integer number of seconds")
+    elif interval not in TOPOLOGY_INTERVALS:
+        # [portal, 2026-10-29]: "Invalid Duration offset, must be one of [...]" at import
+        report.error(f"collectionIntervalSec {interval} is refused at import; the portal takes "
+                     f"only {', '.join(map(str, TOPOLOGY_INTERVALS))}")
     attrs = module.get("collectionAttrs")
     if not isinstance(attrs, str):
         report.error("collectionAttrs must be a JSON-ENCODED STRING, not an object -- a portal "

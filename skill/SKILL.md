@@ -70,7 +70,7 @@ module or dashboard JSON you write, edit or are asked to debug, and report what 
 - **`scripts/lm_lint_module.py <file.json|dir> ...`** — lints DataSource, PropertySource (plain and
   ERI) and TopologySource JSON for the silent failures above: batchscript keys missing
   `##WILDVALUE##.`, `useWildValueAsUniqueIdentifier` off, auto-delete on, a `discoveryInterval`
-  the portal doesn't take, secrets not ending `.credential`, snippets loaded without the script's
+  or TopologySource `collectionIntervalSec` the portal doesn't take, secrets not ending `.credential`, snippets loaded without the script's
   binding, reserved datapoint names, catch blocks returning 0, a `true()` PropertySource that
   can print or fail, TopologySource `collectionAttrs` as an object, REST-model JSON passed off as an
   export, and more. Groovy and PowerShell both; Log/Event/Config/Diagnostic/RemediationSources get
