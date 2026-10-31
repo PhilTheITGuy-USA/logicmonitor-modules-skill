@@ -1,16 +1,16 @@
 {
   "name": "Proxmox_VE_Cluster_GuestPerformance",
   "displayedAs": "Proxmox VE Cluster Guest Performance",
-  "description": "CPU, memory, network and disk throughput for every QEMU virtual machine and LXC container in a Proxmox VE cluster, collected cluster-wide in a single API call.",
+  "description": "CPU, memory, network and disk throughput, pressure stall, ballooning and disk latency for every QEMU virtual machine and LXC container in a Proxmox VE cluster, collected cluster-wide.",
   "appliesTo": "pve.cluster.role == \"active\" || pve.cluster.role == \"standby\"",
-  "technicalNotes": "BatchScript: one /cluster/resources?type=vm call per interval, whether the cluster has 10 guests or 5000.\n\nInstance IDs are the Proxmox resource id (qemu/<vmid>, lxc/<vmid>), which is cluster-unique and unchanged by live migration or HA failover, so instances and their history survive a guest moving between nodes.\n\nDataRateRxMB, DataRateTxMB, DiskReadRateMB and DiskWriteRateMB are declared as derive because Proxmox reports these as counters accumulated since guest start; a minimum of 0 discards the negative delta produced when a guest restarts. The counters are scaled to MB before emission, which is monotonic and so leaves the derive rate correct.\n\nDiskUsedGB and DiskUsagePercent are reported for LXC containers only. QEMU exposes no used-disk figure -- real usage inside a VM requires the guest agent, exactly as VMware requires VMware Tools -- so those datapoints are deliberately left as no-data for VMs rather than reported as zero.\n\nTemplates are excluded from discovery: they are never running and would otherwise appear as permanently down instances.\n\nApplies on the cluster role: resources whose pve.cluster.role is active or standby, which the NetScan sets. Only one of the pair collects -- the active resource, or the standby while the active one is down or has lost quorum. The other prints nothing, so its datapoints read No Data and the pair never alerts twice. The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.\n\nRequires VM.Audit on /vms/{vmid}, which the PVEAuditor role includes. /cluster/resources filters guests by privilege rather than erroring, so an under-privileged token sees fewer guests, or none.\n\nUnits: memory in MB, I/O rates in MB per second, disk capacity and use in GB. MB and GB are decimal (10^6 and 10^9 bytes); the product page states the suite's convention.",
+  "technicalNotes": "BatchScript: one /cluster/resources?type=vm call per interval, whether the cluster has 10 guests or 5000, for CPU, memory, network and disk throughput. Pressure, ballooning and disk timings are not in it: they come from each online node's own guest lists, /nodes/{node}/qemu?full=1 and /nodes/{node}/lxc, plus /cluster/status to know which nodes are online -- at most 1 + 2 per node per interval, never one per guest. A node list that cannot be read withholds those figures for its guests, which read No Data; the rest of the run is unaffected, and the node's own modules show why.\n\nThe Pressure datapoints are Linux pressure stall information for the guest's own cgroup: the percent of time some (or, for Full, all) of its tasks waited for CPU, IO or memory, Proxmox's 10-second average at the moment of the poll. CPU pressure is the nearest Proxmox has to VMware's CPU ready. They are recorded without thresholds, as on Proxmox_VE_Node_Detail.\n\nBalloonMB, GuestSwapInRateMB, GuestSwapOutRateMB and MajorPageFaultRate are VMs only, from QEMU's ballooninfo: BalloonMB is the memory the balloon has taken back from the guest (configured memory less what it has now), and the others are the guest's own swap and major page-fault counters, reported only while its balloon driver supplies statistics. A VM whose balloon is disabled reports none of them.\n\nDiskReadIOPS and DiskWriteIOPS are QEMU's per-disk operation counters (blockstat), summed over the VM's disks and declared derive. DiskReadLatencyMs and DiskWriteLatencyMs are the average time per operation since the previous poll: the change in blockstat's total time over the change in operations, computed in the script from the previous totals kept in lm.cache on the Collector. They are withheld on the first poll, after a restart or migration resets the counters, and over an interval with no reads (or writes). Containers have no blockstat; their IO pressure is their IO signal. Proxmox reports no latency per storage outside Ceph (see Proxmox_VE_Cluster_CephOSD). ballooninfo and blockstat are passed through from QEMU and not described in Proxmox's API schema; they were read on Proxmox VE 9.2.3.\n\nInstance IDs are the Proxmox resource id (qemu/<vmid>, lxc/<vmid>), which is cluster-unique and unchanged by live migration or HA failover, so instances and their history survive a guest moving between nodes.\n\nDataRateRxMB, DataRateTxMB, DiskReadRateMB and DiskWriteRateMB are declared as derive because Proxmox reports these as counters accumulated since guest start; a minimum of 0 discards the negative delta produced when a guest restarts. The counters are scaled to MB before emission, which is monotonic and so leaves the derive rate correct.\n\nDiskUsedGB and DiskUsagePercent are reported for LXC containers only. QEMU exposes no used-disk figure -- real usage inside a VM requires the guest agent, exactly as VMware requires VMware Tools -- so those datapoints are deliberately left as no-data for VMs rather than reported as zero.\n\nTemplates are excluded from discovery: they are never running and would otherwise appear as permanently down instances.\n\nApplies on the cluster role: resources whose pve.cluster.role is active or standby, which the NetScan sets. Only one of the pair collects -- the active resource, or the standby while the active one is down or has lost quorum. The other prints nothing, so its datapoints read No Data and the pair never alerts twice. The suite has no addCategory_* PropertySource: the NetScan sets the categories and pve.cluster.role, and the product page lists them for a resource added by hand.\n\nRequires VM.Audit on /vms/{vmid}, which the PVEAuditor role includes, and Sys.Audit on / for /cluster/status. /cluster/resources and the node guest lists filter guests by privilege rather than erroring, so an under-privileged token sees fewer guests, or none.\n\nUnits: memory in MB, I/O rates in MB per second, disk capacity and use in GB, latency in milliseconds, pressure in percent. MB and GB are decimal (10^6 and 10^9 bytes); the product page states the suite's convention.",
   "searchKeywords": "proxmox,pve,vm,qemu,lxc,container,guest,virtualization,performance",
   "group": "Proxmox VE",
   "collectionMethod": "batchscript",
   "collectionInterval": "5m",
   "collectionAttrs": {
     "type": "groovy",
-    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveApiBases = { ->\n    def own = pveHostProp('pve.node') ? pveHostUrl(pveHostProp('system.hostname')) : null\n    ([own, pveBaseUrl?.replaceAll('/+$', '')] +\n        pveHostProp('pve.api.hosts', '').tokenize(',').collect { pveHostUrl(it) })\n        .findAll { it }.unique()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveFailureStatus = { Exception failure ->\n    def match = failure.message =~ /^HTTP (\\d+) /\n    match.find() ? (match.group(1) as int) : null\n}\ndef pveActiveBase = null\ndef pveBasesFor = { String path ->\n    def bases = pveApiBases()\n    if (pveActiveBase in bases) { bases = [pveActiveBase] + (bases - pveActiveBase) }\n    path.startsWith('/nodes/') ? bases.take(2) : bases\n}\ndef pveGet = { String path ->\n    def bases = pveBasesFor(path)\n    Exception last = null\n    for (base in bases) {\n        try {\n            def data = pveGetAt(base, path)\n            pveActiveBase = base\n            return data\n        } catch (IOException failure) {\n            def status = pveFailureStatus(failure)\n            if (status != null && status < 500) { throw failure }\n            last = failure\n        }\n    }\n    throw last ?: new IOException('No Proxmox API address to ask: set pve.api.url')\n}\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pveGB = { value ->\n    pveRound(((value ?: 0) as double) / 1000000000.0d)\n}\ndef pveMB = { value ->\n    pveRound(((value ?: 0) as double) / 1000000.0d)\n}\ndef pvePercent = { used, total ->\n    def totalValue = (total ?: 0) as double\n    totalValue > 0 ? pveRound(((used ?: 0) as double) * 100.0d / totalValue) : 0\n}\ndef pveQuorate = { List status ->\n    def clusterRow = status.find { it.type?.toString() == 'cluster' }\n    clusterRow == null || clusterRow.quorate?.toString() == '1'\n}\ndef pveAddressDown = { String host ->\n    def url = new URI(pveHostUrl(host))\n    def address = url.host.replaceAll(/^\\[|\\]$/, '')\n    try {\n        if (!InetAddress.getByName(address).isReachable(pveTimeout)) { return true }\n        new Socket().withCloseable { it.connect(new InetSocketAddress(address, url.port), pveTimeout) }\n        return false\n    } catch (IOException unreachable) {\n        return true\n    }\n}\ndef pveCorosyncRunning = { ->\n    try {\n        def service = (pveNodeGet('/nodes/' + pveSelfNode() + '/services') ?: [])\n            .find { (it.name ?: it.service)?.toString() == 'corosync' }\n        service == null ? null : service.get('active-state')?.toString() == 'active'\n    } catch (Exception unreadable) {\n        null\n    }\n}\ndef pveStateStore = null\ndef pveState = { ->\n    if (pveStateStore != null) { return pveStateStore }\n    if (binding.hasVariable('pveTestState')) {\n        def map = pveTestState\n        pveStateStore = [read: { String k -> map[k] }, write: { String k, String v, int ttl -> map[k] = v },\n                         drop: { String k -> map.remove(k) }]\n        return pveStateStore\n    }\n    try {\n        def snippets = Class.forName('com.logicmonitor.mod.Snippets')\n        def helper = Class.forName('com.santaba.agent.groovy.utils.GroovyScriptHelper')\n        def loader = helper.getInstance(GroovySystem.version).getScript('Snippets', snippets.getLoader()).withBinding(getBinding())\n        def quiet = new PrintStream(new ByteArrayOutputStream())\n        def lmDebug = loader.load('lm.debug', '1').debugSnippetFactory(quiet, false, false, 'proxmox-ve')\n        def cache = loader.load('lm.cache', '0').cacheSnippetFactory(lmDebug, 'proxmox-ve')\n        pveStateStore = [read: { String k -> cache.cacheGet(k) }, write: { String k, String v, int ttl -> cache.cacheSet(k, v, ttl) },\n                         drop: { String k -> cache.cacheRemove(k) }]\n    } catch (Throwable unavailable) {\n        pveStateStore = [read: { String k -> null }, write: { String k, String v, int ttl -> }, drop: { String k -> }]\n    }\n    return pveStateStore\n}\ndef pveHandBack = { String label, Map result, Closure viewOk ->\n    if (!label) { return result }\n    def key = 'handback:' + (pveHostProp('pve.cluster') ?: '') + ':' +\n              (pveHostProp('pve.node') ?: pveHostProp('system.hostname') ?: '') + ':' + label\n    def state = pveState()\n    if (result.collect) {\n        state.write(key, 'collecting', 7200)\n        return result\n    }\n    if (state.read(key) && viewOk()) {\n        state.drop(key)\n        return result + [collect: true, why: result.why + '; hand-back: one more poll to clear its alerts']\n    }\n    return result\n}\ndef pveRoleResult = null\ndef pveRole = { String label = null ->\n    if (pveRoleResult != null) { return pveRoleResult }\n    def role = pveHostProp('pve.cluster.role')\n    def active = pveHostProp('pve.cluster.active')\n    def ownStatus = { -> pveNodeGet('/cluster/status') ?: [] }\n    def result\n    try {\n        if (role == null) {\n            def standalone = !(pveGet('/cluster/status') ?: []).any { it.type?.toString() == 'cluster' }\n            result = [collect: standalone, why: standalone ? 'standalone host' : 'no cluster role']\n        } else if (role == 'active' && pveHostProp('pve.node') == null) {\n            result = [collect: true, why: 'active cluster resource']\n        } else if (role == 'active') {\n            def status = ownStatus()\n            def clustered = status.any { it.type?.toString() == 'cluster' }\n            if (clustered && pveCorosyncRunning() == false) {\n                result = [collect: false, why: 'active, but corosync is not running on this node']\n            } else {\n                def twoNode = status.count { it.type?.toString() == 'node' } == 2\n                def ok = pveQuorate(status) || twoNode\n                result = [collect: ok, why: ok ? 'active' : 'active, but this node has no quorum']\n            }\n        } else if (role == 'standby' && active?.startsWith('address:')) {\n            def down = pveAddressDown(active.substring('address:'.length()))\n            result = pveHandBack(label, [collect: down, why: down ? 'standby, cluster address down' : 'standby, cluster address answers'], {\n                def status = ownStatus()\n                pveQuorate(status) || status.count { it.type?.toString() == 'node' } == 2\n            })\n        } else if (role == 'standby' && active) {\n            def status = ownStatus()\n            if (pveCorosyncRunning() == false) {\n                pveRoleResult = [collect: false, why: 'standby, but corosync is not running on this node', role: role]\n                return pveRoleResult\n            }\n            def row = status.find { it.type?.toString() == 'node' && it.name?.toString() == active }\n            def twoNode = status.count { it.type?.toString() == 'node' } == 2\n            def takeOver = (pveQuorate(status) || twoNode) && (row == null || row.online?.toString() != '1')\n            result = pveHandBack(label, [collect: takeOver, why: takeOver ? 'standby, ' + active + ' is offline' : 'standby, ' + active + ' is collecting'],\n                                 { pveQuorate(status) || twoNode })\n        } else {\n            result = [collect: false, why: 'no cluster role']\n        }\n    } catch (Exception unreadable) {\n        result = [collect: role == 'active', why: 'cluster role check failed: ' + unreadable.message]\n    }\n    pveRoleResult = result + [role: role]\n    return pveRoleResult\n}\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\nif (!pveRole('Proxmox_VE_Cluster_GuestPerformance').collect) {\n    return 0\n}\ntry {\n    def guests = (pveGet('/cluster/resources?type=vm') ?: [])\n        .findAll { it.type in ['qemu', 'lxc'] && !it.template }\n    guests.each { guest ->\n        def id = guest.id\n        pveEmit(id, 'CPUUsagePercent', pveRound(((guest.cpu ?: 0) as double) * 100.0d))\n        pveEmit(id, 'CPUCount', guest.maxcpu ?: 0)\n        pveEmit(id, 'MemoryUsedMB', pveMB(guest.mem))\n        pveEmit(id, 'MemoryCapacityMB', pveMB(guest.maxmem))\n        pveEmit(id, 'MemoryUsagePercent', pvePercent(guest.mem, guest.maxmem))\n        pveEmit(id, 'DiskCapacityGB', pveGB(guest.maxdisk))\n        if (guest.memhost != null) {\n            pveEmit(id, 'MemoryHostMB', pveMB(guest.memhost))\n        }\n        pveEmit(id, 'DataRateRxMB', pveMB(guest.netin))\n        pveEmit(id, 'DataRateTxMB', pveMB(guest.netout))\n        pveEmit(id, 'DiskReadRateMB', pveMB(guest.diskread))\n        pveEmit(id, 'DiskWriteRateMB', pveMB(guest.diskwrite))\n        if (guest.type == 'lxc') {\n            pveEmit(id, 'DiskUsedGB', pveGB(guest.disk))\n            pveEmit(id, 'DiskUsagePercent', pvePercent(guest.disk, guest.maxdisk))\n        }\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox guest performance collection failed: ' + exception.message)\n    return 2\n}\n"
+    "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveApiBases = { ->\n    def own = pveHostProp('pve.node') ? pveHostUrl(pveHostProp('system.hostname')) : null\n    ([own, pveBaseUrl?.replaceAll('/+$', '')] +\n        pveHostProp('pve.api.hosts', '').tokenize(',').collect { pveHostUrl(it) })\n        .findAll { it }.unique()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401) {\n        throw new IOException('HTTP 401 for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status == 403) {\n        throw new IOException('HTTP 403 for ' + path + ' (' + connection.responseMessage + ')' +\n            ' - the token in pve.token.credential lacks that privilege. The suite needs PVEAuditor on /.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveFailureStatus = { Exception failure ->\n    def match = failure.message =~ /^HTTP (\\d+) /\n    match.find() ? (match.group(1) as int) : null\n}\ndef pveActiveBase = null\ndef pveBasesFor = { String path ->\n    def bases = pveApiBases()\n    if (pveActiveBase in bases) { bases = [pveActiveBase] + (bases - pveActiveBase) }\n    path.startsWith('/nodes/') ? bases.take(2) : bases\n}\ndef pveGet = { String path ->\n    def bases = pveBasesFor(path)\n    Exception last = null\n    for (base in bases) {\n        try {\n            def data = pveGetAt(base, path)\n            pveActiveBase = base\n            return data\n        } catch (IOException failure) {\n            def status = pveFailureStatus(failure)\n            if (status != null && status < 500) { throw failure }\n            last = failure\n        }\n    }\n    throw last ?: new IOException('No Proxmox API address to ask: set pve.api.url')\n}\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveNodeGet = { String path ->\n    if (!pveSelfBase) { throw new IOException('Cannot reach this node: system.hostname is empty') }\n    pveGetAt(pveSelfBase, path)\n}\ndef pveSelfNode = { ->\n    def named = pveHostProp('pve.node')\n    if (named) { return named }\n    def local = (pveNodeGet('/cluster/status') ?: []).find { it.type?.toString() == 'node' && it.local }\n    if (local?.name) { return local.name.toString() }\n    throw new IOException('Cannot tell which node this resource is: set pve.node')\n}\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveEmit = { String instanceId, String key, Object value ->\n    println((instanceId ? pveWildValue(instanceId) + '.' : '') + key + '=' + value)\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pveGB = { value ->\n    pveRound(((value ?: 0) as double) / 1000000000.0d)\n}\ndef pveMB = { value ->\n    pveRound(((value ?: 0) as double) / 1000000.0d)\n}\ndef pvePercent = { used, total ->\n    def totalValue = (total ?: 0) as double\n    totalValue > 0 ? pveRound(((used ?: 0) as double) * 100.0d / totalValue) : 0\n}\ndef pveQuorate = { List status ->\n    def clusterRow = status.find { it.type?.toString() == 'cluster' }\n    clusterRow == null || clusterRow.quorate?.toString() == '1'\n}\ndef pveAddressDown = { String host ->\n    def url = new URI(pveHostUrl(host))\n    def address = url.host.replaceAll(/^\\[|\\]$/, '')\n    try {\n        if (!InetAddress.getByName(address).isReachable(pveTimeout)) { return true }\n        new Socket().withCloseable { it.connect(new InetSocketAddress(address, url.port), pveTimeout) }\n        return false\n    } catch (IOException unreachable) {\n        return true\n    }\n}\ndef pveCorosyncRunning = { ->\n    try {\n        def service = (pveNodeGet('/nodes/' + pveSelfNode() + '/services') ?: [])\n            .find { (it.name ?: it.service)?.toString() == 'corosync' }\n        service == null ? null : service.get('active-state')?.toString() == 'active'\n    } catch (Exception unreadable) {\n        null\n    }\n}\ndef pveStateStore = null\ndef pveState = { ->\n    if (pveStateStore != null) { return pveStateStore }\n    if (binding.hasVariable('pveTestState')) {\n        def map = pveTestState\n        pveStateStore = [read: { String k -> map[k] }, write: { String k, String v, int ttl -> map[k] = v },\n                         drop: { String k -> map.remove(k) }]\n        return pveStateStore\n    }\n    try {\n        def snippets = Class.forName('com.logicmonitor.mod.Snippets')\n        def helper = Class.forName('com.santaba.agent.groovy.utils.GroovyScriptHelper')\n        def loader = helper.getInstance(GroovySystem.version).getScript('Snippets', snippets.getLoader()).withBinding(getBinding())\n        def quiet = new PrintStream(new ByteArrayOutputStream())\n        def lmDebug = loader.load('lm.debug', '1').debugSnippetFactory(quiet, false, false, 'proxmox-ve')\n        def cache = loader.load('lm.cache', '0').cacheSnippetFactory(lmDebug, 'proxmox-ve')\n        pveStateStore = [read: { String k -> cache.cacheGet(k) }, write: { String k, String v, int ttl -> cache.cacheSet(k, v, ttl) },\n                         drop: { String k -> cache.cacheRemove(k) }]\n    } catch (Throwable unavailable) {\n        pveStateStore = [read: { String k -> null }, write: { String k, String v, int ttl -> }, drop: { String k -> }]\n    }\n    return pveStateStore\n}\ndef pveHandBack = { String label, Map result, Closure viewOk ->\n    if (!label) { return result }\n    def key = 'handback:' + (pveHostProp('pve.cluster') ?: '') + ':' +\n              (pveHostProp('pve.node') ?: pveHostProp('system.hostname') ?: '') + ':' + label\n    def state = pveState()\n    if (result.collect) {\n        state.write(key, 'collecting', 7200)\n        return result\n    }\n    if (state.read(key) && viewOk()) {\n        state.drop(key)\n        return result + [collect: true, why: result.why + '; hand-back: one more poll to clear its alerts']\n    }\n    return result\n}\ndef pveRoleResult = null\ndef pveRole = { String label = null ->\n    if (pveRoleResult != null) { return pveRoleResult }\n    def role = pveHostProp('pve.cluster.role')\n    def active = pveHostProp('pve.cluster.active')\n    def ownStatus = { -> pveNodeGet('/cluster/status') ?: [] }\n    def result\n    try {\n        if (role == null) {\n            def standalone = !(pveGet('/cluster/status') ?: []).any { it.type?.toString() == 'cluster' }\n            result = [collect: standalone, why: standalone ? 'standalone host' : 'no cluster role']\n        } else if (role == 'active' && pveHostProp('pve.node') == null) {\n            result = [collect: true, why: 'active cluster resource']\n        } else if (role == 'active') {\n            def status = ownStatus()\n            def clustered = status.any { it.type?.toString() == 'cluster' }\n            if (clustered && pveCorosyncRunning() == false) {\n                result = [collect: false, why: 'active, but corosync is not running on this node']\n            } else {\n                def twoNode = status.count { it.type?.toString() == 'node' } == 2\n                def ok = pveQuorate(status) || twoNode\n                result = [collect: ok, why: ok ? 'active' : 'active, but this node has no quorum']\n            }\n        } else if (role == 'standby' && active?.startsWith('address:')) {\n            def down = pveAddressDown(active.substring('address:'.length()))\n            result = pveHandBack(label, [collect: down, why: down ? 'standby, cluster address down' : 'standby, cluster address answers'], {\n                def status = ownStatus()\n                pveQuorate(status) || status.count { it.type?.toString() == 'node' } == 2\n            })\n        } else if (role == 'standby' && active) {\n            def status = ownStatus()\n            if (pveCorosyncRunning() == false) {\n                pveRoleResult = [collect: false, why: 'standby, but corosync is not running on this node', role: role]\n                return pveRoleResult\n            }\n            def row = status.find { it.type?.toString() == 'node' && it.name?.toString() == active }\n            def twoNode = status.count { it.type?.toString() == 'node' } == 2\n            def takeOver = (pveQuorate(status) || twoNode) && (row == null || row.online?.toString() != '1')\n            result = pveHandBack(label, [collect: takeOver, why: takeOver ? 'standby, ' + active + ' is offline' : 'standby, ' + active + ' is collecting'],\n                                 { pveQuorate(status) || twoNode })\n        } else {\n            result = [collect: false, why: 'no cluster role']\n        }\n    } catch (Exception unreadable) {\n        result = [collect: role == 'active', why: 'cluster role check failed: ' + unreadable.message]\n    }\n    pveRoleResult = result + [role: role]\n    return pveRoleResult\n}\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\nif (!pveRole('Proxmox_VE_Cluster_GuestPerformance').collect) {\n    return 0\n}\ntry {\n    def guests = (pveGet('/cluster/resources?type=vm') ?: [])\n        .findAll { it.type in ['qemu', 'lxc'] && !it.template }\n    def number = { value -> value != null && value.toString().isNumber() ? value.toString() as double : null }\n    def guestDetail = [:]\n    def detailNodes = [] as Set\n    def running = guests.findAll { it.status?.toString() == 'running' && it.node }\n    if (running) {\n        try {\n            def online = (pveGet('/cluster/status') ?: [])\n                .findAll { it.type?.toString() == 'node' && it.name && (it.online == null || it.online?.toString() == '1') }\n                .collect { it.name.toString() } as Set\n            def deadline = System.currentTimeMillis() + (pveHostProp('pve.api.budget.ms', '45000') as long)\n            def lists = running.findAll { it.node.toString() in online }\n                .collect { [it.node.toString(), it.type.toString()] }.unique().sort { a, b -> a[0] <=> b[0] ?: a[1] <=> b[1] }\n            def skipped = 0\n            lists.each { node, type ->\n                if (System.currentTimeMillis() > deadline) { skipped++; return }\n                try {\n                    (pveGet('/nodes/' + node + '/' + type + (type == 'qemu' ? '?full=1' : '')) ?: []).each { row ->\n                        if (row.vmid != null) { guestDetail[type + '/' + row.vmid] = [node: node, row: row] }\n                    }\n                    detailNodes << node\n                } catch (Exception listFailure) {\n                    System.err.println('Guest pressure and disk figures: no ' + type + ' list from node ' + node + ': ' + listFailure.message)\n                }\n            }\n            if (skipped) {\n                System.err.println('Guest pressure and disk figures: time budget reached (pve.api.budget.ms): ' + skipped + ' node lists not read')\n            }\n        } catch (Exception statusFailure) {\n            System.err.println('Guest pressure and disk figures: /cluster/status unreadable: ' + statusFailure.message)\n        }\n    }\n    def ioKey = { String node -> 'iolatency:' + (pveHostProp('pve.cluster') ?: '') + ':' + node }\n    def ioBefore = detailNodes.collectEntries { node ->\n        def saved = null\n        try {\n            def text = pveState().read(ioKey(node))\n            saved = text ? new groovy.json.JsonSlurper().parseText(text.toString()) : null\n        } catch (Exception unreadable) { }\n        [node, saved instanceof Map ? saved : [:]]\n    }\n    def ioNow = detailNodes.collectEntries { [it, [:]] }\n    def latencyMs = { now, before, int time, int ops ->\n        if (!(before instanceof List) || before.size() < 4) { return null }\n        def operations = now[ops] - (before[ops] as double)\n        def elapsed = now[time] - (before[time] as double)\n        operations > 0 && elapsed >= 0 ? pveRound(elapsed / operations / 1000000.0d) : null\n    }\n    guests.each { guest ->\n        def id = guest.id\n        pveEmit(id, 'CPUUsagePercent', pveRound(((guest.cpu ?: 0) as double) * 100.0d))\n        pveEmit(id, 'CPUCount', guest.maxcpu ?: 0)\n        pveEmit(id, 'MemoryUsedMB', pveMB(guest.mem))\n        pveEmit(id, 'MemoryCapacityMB', pveMB(guest.maxmem))\n        pveEmit(id, 'MemoryUsagePercent', pvePercent(guest.mem, guest.maxmem))\n        pveEmit(id, 'DiskCapacityGB', pveGB(guest.maxdisk))\n        if (guest.type == 'qemu' && guest.memhost != null) {\n            pveEmit(id, 'MemoryHostMB', pveMB(guest.memhost))\n        }\n        def detail = guestDetail[guest.id?.toString()]\n        def row = detail?.row\n        if (row instanceof Map) {\n            def cpuSome = number(row.pressurecpusome)\n            def cpuFull = number(row.pressurecpufull)\n            def ioSome = number(row.pressureiosome)\n            def ioFull = number(row.pressureiofull)\n            def memorySome = number(row.pressurememorysome)\n            def memoryFull = number(row.pressurememoryfull)\n            if (cpuSome != null) { pveEmit(id, 'PressureCPUSomePercent', pveRound(cpuSome)) }\n            if (cpuFull != null) { pveEmit(id, 'PressureCPUFullPercent', pveRound(cpuFull)) }\n            if (ioSome != null) { pveEmit(id, 'PressureIOSomePercent', pveRound(ioSome)) }\n            if (ioFull != null) { pveEmit(id, 'PressureIOFullPercent', pveRound(ioFull)) }\n            if (memorySome != null) { pveEmit(id, 'PressureMemorySomePercent', pveRound(memorySome)) }\n            if (memoryFull != null) { pveEmit(id, 'PressureMemoryFullPercent', pveRound(memoryFull)) }\n            def balloon = row.ballooninfo instanceof Map ? row.ballooninfo : null\n            if (balloon != null) {\n                def actual = number(balloon.actual)\n                def configured = number(balloon.max_mem)\n                if (actual != null && configured != null) {\n                    pveEmit(id, 'BalloonMB', pveMB(Math.max(0.0d, configured - actual)))\n                }\n                if (number(balloon.mem_swapped_in) != null) { pveEmit(id, 'GuestSwapInRateMB', pveMB(balloon.mem_swapped_in)) }\n                if (number(balloon.mem_swapped_out) != null) { pveEmit(id, 'GuestSwapOutRateMB', pveMB(balloon.mem_swapped_out)) }\n                if (number(balloon.major_page_faults) != null) {\n                    pveEmit(id, 'MajorPageFaultRate', number(balloon.major_page_faults) as long)\n                }\n            }\n            def blocks = row.blockstat instanceof Map ? row.blockstat : null\n            if (blocks != null) {\n                def totals = [0.0d, 0.0d, 0.0d, 0.0d]\n                blocks.values().findAll { it instanceof Map }.each { disk ->\n                    ['rd_total_time_ns', 'rd_operations', 'wr_total_time_ns', 'wr_operations'].eachWithIndex { field, i ->\n                        totals[i] += number(disk[field]) ?: 0.0d\n                    }\n                }\n                pveEmit(id, 'DiskReadIOPS', totals[1] as long)\n                pveEmit(id, 'DiskWriteIOPS', totals[3] as long)\n                def vmid = guest.vmid?.toString()\n                if (vmid) {\n                    ioNow[detail.node][vmid] = totals\n                    def before = ioBefore[detail.node]?.get(vmid)\n                    def read = latencyMs(totals, before, 0, 1)\n                    def write = latencyMs(totals, before, 2, 3)\n                    if (read != null) { pveEmit(id, 'DiskReadLatencyMs', read) }\n                    if (write != null) { pveEmit(id, 'DiskWriteLatencyMs', write) }\n                }\n            }\n        }\n        pveEmit(id, 'DataRateRxMB', pveMB(guest.netin))\n        pveEmit(id, 'DataRateTxMB', pveMB(guest.netout))\n        pveEmit(id, 'DiskReadRateMB', pveMB(guest.diskread))\n        pveEmit(id, 'DiskWriteRateMB', pveMB(guest.diskwrite))\n        if (guest.type == 'lxc') {\n            pveEmit(id, 'DiskUsedGB', pveGB(guest.disk))\n            pveEmit(id, 'DiskUsagePercent', pvePercent(guest.disk, guest.maxdisk))\n        }\n    }\n    ioNow.each { node, totals ->\n        try {\n            pveState().write(ioKey(node), groovy.json.JsonOutput.toJson(totals), 3600)\n        } catch (Exception unwritable) { }\n    }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox guest performance collection failed: ' + exception.message)\n    return 2\n}\n"
   },
   "multiInstance": true,
   "useWildValueAsUniqueIdentifier": true,
@@ -215,8 +215,218 @@
       "clearInterval": 0,
       "noData": "Do not trigger an alert",
       "name": "MemoryHostMB",
-      "description": "The host's view of the guest's memory footprint, MB (decimal, 10^6 bytes). The gap between this and MemoryUsedMB is the balloon at work. Not reported by older Proxmox.",
+      "description": "VMs only: the host's view of the VM's memory footprint, MB (decimal, 10^6 bytes). Not reported for containers, nor by older Proxmox.",
       "interpretExpr": "##WILDVALUE##.MemoryHostMB"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureCPUSomePercent",
+      "description": "Percent of time some of the guest's tasks waited for CPU, Proxmox's 10-second average at poll time. The nearest Proxmox has to CPU ready.",
+      "interpretExpr": "##WILDVALUE##.PressureCPUSomePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureCPUFullPercent",
+      "description": "Percent of time all of the guest's tasks waited for CPU, 10-second average at poll time.",
+      "interpretExpr": "##WILDVALUE##.PressureCPUFullPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureIOSomePercent",
+      "description": "Percent of time some of the guest's tasks waited for IO, 10-second average at poll time.",
+      "interpretExpr": "##WILDVALUE##.PressureIOSomePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureIOFullPercent",
+      "description": "Percent of time all of the guest's tasks waited for IO, 10-second average at poll time.",
+      "interpretExpr": "##WILDVALUE##.PressureIOFullPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureMemorySomePercent",
+      "description": "Percent of time some of the guest's tasks waited for memory, 10-second average at poll time.",
+      "interpretExpr": "##WILDVALUE##.PressureMemorySomePercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "PressureMemoryFullPercent",
+      "description": "Percent of time all of the guest's tasks waited for memory, 10-second average at poll time.",
+      "interpretExpr": "##WILDVALUE##.PressureMemoryFullPercent"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "BalloonMB",
+      "description": "VMs only: memory the balloon has taken back from the guest, configured memory less what it has now, MB (decimal, 10^6 bytes).",
+      "interpretExpr": "##WILDVALUE##.BalloonMB"
+    },
+    {
+      "type": "derive",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "0",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "GuestSwapInRateMB",
+      "description": "VMs only: MB the guest swapped in per second, from its balloon driver's statistics (decimal, 10^6 bytes).",
+      "interpretExpr": "##WILDVALUE##.GuestSwapInRateMB"
+    },
+    {
+      "type": "derive",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "0",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "GuestSwapOutRateMB",
+      "description": "VMs only: MB the guest swapped out per second, from its balloon driver's statistics (decimal, 10^6 bytes).",
+      "interpretExpr": "##WILDVALUE##.GuestSwapOutRateMB"
+    },
+    {
+      "type": "derive",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "0",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "MajorPageFaultRate",
+      "description": "VMs only: major page faults per second inside the guest, from its balloon driver's statistics.",
+      "interpretExpr": "##WILDVALUE##.MajorPageFaultRate"
+    },
+    {
+      "type": "derive",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "0",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "DiskReadIOPS",
+      "description": "VMs only: read operations per second, summed over the VM's disks.",
+      "interpretExpr": "##WILDVALUE##.DiskReadIOPS"
+    },
+    {
+      "type": "derive",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "0",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "DiskWriteIOPS",
+      "description": "VMs only: write operations per second, summed over the VM's disks.",
+      "interpretExpr": "##WILDVALUE##.DiskWriteIOPS"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "DiskReadLatencyMs",
+      "description": "VMs only: average milliseconds per read since the previous poll, over the VM's disks. Withheld on the first poll, after a counter reset and when nothing was read.",
+      "interpretExpr": "##WILDVALUE##.DiskReadLatencyMs"
+    },
+    {
+      "type": "gauge",
+      "useValue": "output",
+      "interpretMethod": "namevalue",
+      "dataType": 7,
+      "maxDigits": 4,
+      "min": "",
+      "max": "",
+      "triggerInterval": 0,
+      "clearInterval": 0,
+      "noData": "Do not trigger an alert",
+      "name": "DiskWriteLatencyMs",
+      "description": "VMs only: average milliseconds per write since the previous poll, over the VM's disks. Withheld on the first poll, after a counter reset and when nothing was written.",
+      "interpretExpr": "##WILDVALUE##.DiskWriteLatencyMs"
     }
   ],
   "graphs": [
@@ -490,6 +700,259 @@
           "isVirtual": false
         }
       ]
+    },
+    {
+      "name": "Pressure Stall",
+      "title": "Pressure Stall",
+      "verticalLabel": "%",
+      "min": 0,
+      "rigid": true,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 9,
+      "datapoints": [
+        {
+          "name": "PressureCPUSomePercent",
+          "datapointName": "PressureCPUSomePercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureCPUFullPercent",
+          "datapointName": "PressureCPUFullPercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureIOSomePercent",
+          "datapointName": "PressureIOSomePercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureIOFullPercent",
+          "datapointName": "PressureIOFullPercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureMemorySomePercent",
+          "datapointName": "PressureMemorySomePercent",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "PressureMemoryFullPercent",
+          "datapointName": "PressureMemoryFullPercent",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "PressureCPUSomePercent",
+          "legend": "CPU some",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureCPUFullPercent",
+          "legend": "CPU full",
+          "color": "black",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureIOSomePercent",
+          "legend": "IO some",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureIOFullPercent",
+          "legend": "IO full",
+          "color": "red",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureMemorySomePercent",
+          "legend": "Memory some",
+          "color": "green",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "PressureMemoryFullPercent",
+          "legend": "Memory full",
+          "color": "fuchsia",
+          "type": "line",
+          "isVirtual": false
+        }
+      ],
+      "max": 100
+    },
+    {
+      "name": "Balloon",
+      "title": "Balloon",
+      "verticalLabel": "MB",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 10,
+      "datapoints": [
+        {
+          "name": "BalloonMB",
+          "datapointName": "BalloonMB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "BalloonMB",
+          "legend": "Reclaimed",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Guest Swap",
+      "title": "Guest Swap",
+      "verticalLabel": "MB/sec",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 11,
+      "datapoints": [
+        {
+          "name": "GuestSwapInRateMB",
+          "datapointName": "GuestSwapInRateMB",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "GuestSwapOutRateMB",
+          "datapointName": "GuestSwapOutRateMB",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "GuestSwapInRateMB",
+          "legend": "Swapped in",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "GuestSwapOutRateMB",
+          "legend": "Swapped out",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Major Page Faults",
+      "title": "Major Page Faults",
+      "verticalLabel": "faults/sec",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 12,
+      "datapoints": [
+        {
+          "name": "MajorPageFaultRate",
+          "datapointName": "MajorPageFaultRate",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "MajorPageFaultRate",
+          "legend": "Major faults",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Disk IOPS",
+      "title": "Disk IOPS",
+      "verticalLabel": "ops/sec",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 13,
+      "datapoints": [
+        {
+          "name": "DiskReadIOPS",
+          "datapointName": "DiskReadIOPS",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "DiskWriteIOPS",
+          "datapointName": "DiskWriteIOPS",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DiskReadIOPS",
+          "legend": "Read",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "DiskWriteIOPS",
+          "legend": "Write",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
+    },
+    {
+      "name": "Disk Latency",
+      "title": "Disk Latency",
+      "verticalLabel": "ms",
+      "min": 0,
+      "rigid": false,
+      "scale1024": false,
+      "timeScale": "1day",
+      "displayPriority": 14,
+      "datapoints": [
+        {
+          "name": "DiskReadLatencyMs",
+          "datapointName": "DiskReadLatencyMs",
+          "consolidationFn": "average"
+        },
+        {
+          "name": "DiskWriteLatencyMs",
+          "datapointName": "DiskWriteLatencyMs",
+          "consolidationFn": "average"
+        }
+      ],
+      "lines": [
+        {
+          "datapointName": "DiskReadLatencyMs",
+          "legend": "Read",
+          "color": "blue",
+          "type": "line",
+          "isVirtual": false
+        },
+        {
+          "datapointName": "DiskWriteLatencyMs",
+          "legend": "Write",
+          "color": "orange",
+          "type": "line",
+          "isVirtual": false
+        }
+      ]
     }
   ],
   "activeDiscovery": {
@@ -497,7 +960,7 @@
     "discoveryMethod": "ad_script",
     "params": {
       "type": "groovy",
-      "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveApiBases = { ->\n    def own = pveHostProp('pve.node') ? pveHostUrl(pveHostProp('system.hostname')) : null\n    ([own, pveBaseUrl?.replaceAll('/+$', '')] +\n        pveHostProp('pve.api.hosts', '').tokenize(',').collect { pveHostUrl(it) })\n        .findAll { it }.unique()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401 || status == 403) {\n        throw new IOException('HTTP ' + status + ' for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveFailureStatus = { Exception failure ->\n    def match = failure.message =~ /^HTTP (\\d+) /\n    match.find() ? (match.group(1) as int) : null\n}\ndef pveActiveBase = null\ndef pveBasesFor = { String path ->\n    def bases = pveApiBases()\n    if (pveActiveBase in bases) { bases = [pveActiveBase] + (bases - pveActiveBase) }\n    path.startsWith('/nodes/') ? bases.take(2) : bases\n}\ndef pveGet = { String path ->\n    def bases = pveBasesFor(path)\n    Exception last = null\n    for (base in bases) {\n        try {\n            def data = pveGetAt(base, path)\n            pveActiveBase = base\n            return data\n        } catch (IOException failure) {\n            def status = pveFailureStatus(failure)\n            if (status != null && status < 500) { throw failure }\n            last = failure\n        }\n    }\n    throw last ?: new IOException('No Proxmox API address to ask: set pve.api.url')\n}\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveDisplayName = { value ->\n    (value == null ? '' : value.toString()).replaceAll('#', ' ').trim()\n}\ndef pvePropValue = { value ->\n    URLEncoder.encode(value == null ? '' : value.toString(), 'UTF-8')\n}\ndef pveDiscover = { String id, String name, String description, Map properties,\n                    Map rawProperties = [:] ->\n    def pairs = properties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> 'auto.' + key + '=' + pvePropValue(value) }\n    pairs += rawProperties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> key + '=' + pvePropValue(value) }\n    println(pveWildValue(id) + '##' + pveDisplayName(name ?: id) + '##' +\n            pveDisplayName(description) + '####' + pairs.join('&'))\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pveGB = { value ->\n    pveRound(((value ?: 0) as double) / 1000000000.0d)\n}\ndef pveGuestList = { ->\n    def resources = pveGet('/cluster/resources?type=vm') ?: []\n    if (resources.isEmpty()) {\n        System.err.println('/cluster/resources returned no guests. This endpoint is filtered by ' +\n            'token ACL rather than erroring, so an under-privileged token looks identical to an ' +\n            'empty cluster. Verify the token has VM.Audit on /vms.')\n    }\n    return resources.findAll { it.type in ['qemu', 'lxc'] && !it.template }\n}\ndef pveSizeLabel = { bytes ->\n    def value = (bytes ?: 0) as double\n    if (value <= 0) { return '' }\n    if (value >= 1e12d) { return String.format(Locale.ROOT, '%.1f TB', value / 1e12d) }\n    if (value >= 1e10d) { return String.format(Locale.ROOT, '%.0f GB', value / 1e9d) }\n    if (value >= 1e9d) { return String.format(Locale.ROOT, '%.1f GB', value / 1e9d) }\n    return String.format(Locale.ROOT, '%.0f MB', value / 1e6d)\n}\ndef pveGuestDiscover = { Map guest, Map rawProperties = [:] ->\n    def vmid = guest.vmid?.toString()\n    def kind = guest.type == 'qemu' ? 'virtual machine' : 'container'\n    def disk = pveSizeLabel(guest.maxdisk)\n    pveDiscover(\n        guest.id,\n        guest.name ?: (guest.type + '-' + vmid),\n        'Proxmox ' + kind + ' ' + vmid + (disk ? ', root disk ' + disk : ''),\n        [\n            pve_id  : guest.id,\n            pve_node: guest.node,\n            pve_type: guest.type,\n            pve_vmid: vmid,\n            pve_pool: guest.pool,\n            pve_tags: guest.tags\n        ],\n        rawProperties\n    )\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ntry {\n    pveGuestList().each { guest -> pveGuestDiscover(guest) }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox guest discovery failed: ' + exception.message)\n    return 2\n}\n"
+      "content": "//!/lib-groovy/v4\nimport groovy.json.JsonSlurper\nimport javax.net.ssl.HostnameVerifier\nimport javax.net.ssl.HttpsURLConnection\nimport javax.net.ssl.SSLContext\nimport javax.net.ssl.SSLSession\nimport javax.net.ssl.TrustManager\nimport javax.net.ssl.X509TrustManager\nimport java.security.cert.X509Certificate\ndef pveProps = binding.hasVariable('netscanProps') ? netscanProps\n             : binding.hasVariable('hostProps') ? hostProps : [:]\ndef pveHostProp = { String key, String fallback = null ->\n    def value = pveProps.get(key)\n    (value == null || value.toString().trim().isEmpty()) ? fallback : value.toString().trim()\n}\ndef pveBaseUrl = pveHostProp('pve.api.url')\nif (!pveBaseUrl) {\n    def hostname = pveHostProp('system.hostname')\n    if (hostname) {\n        pveBaseUrl = 'https://' + hostname + ':' + pveHostProp('pve.api.port', '8006')\n    }\n}\ndef pveToken = pveHostProp('pve.token.credential')\ndef pveTimeout = pveHostProp('pve.api.timeout', '10000') as int\ndef pveConfigError = null\nif (!pveBaseUrl) {\n    pveConfigError = 'Cannot determine the Proxmox API URL: set pve.api.url, or ensure system.hostname resolves.'\n} else if (!pveToken) {\n    pveConfigError = 'Missing pve.token.credential. Expected the full token string: user@realm!tokenid=secret'\n}\nif (pveHostProp('pve.api.insecure', 'false').toBoolean()) {\n    def trustAll = [\n        getAcceptedIssuers: { -> new X509Certificate[0] },\n        checkClientTrusted: { X509Certificate[] certs, String authType -> },\n        checkServerTrusted: { X509Certificate[] certs, String authType -> }\n    ] as X509TrustManager\n    def sslContext = SSLContext.getInstance('TLS')\n    sslContext.init(null, [trustAll] as TrustManager[], new java.security.SecureRandom())\n    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory())\n    HttpsURLConnection.setDefaultHostnameVerifier({ String hostname, SSLSession session -> true } as HostnameVerifier)\n}\ndef pveUrlScheme = { -> pveBaseUrl ? (new URI(pveBaseUrl).scheme ?: 'https') : 'https' }\ndef pveUrlPort = { ->\n    def port = pveBaseUrl ? new URI(pveBaseUrl).port : -1\n    port > 0 ? port : (pveHostProp('pve.api.port', '8006') as int)\n}\ndef pveHostUrl = { String host ->\n    def address = host?.trim()\n    if (!address) { return null }\n    if (address.contains('://')) { return address.replaceAll('(/api2/json)?/*$', '') }\n    def prefix = pveUrlScheme() + '://'\n    if (address.startsWith('[')) { return prefix + (address.contains(']:') ? address : address + ':' + pveUrlPort()) }\n    if (address.count(':') > 1) { return prefix + '[' + address + ']:' + pveUrlPort() }\n    if (address.contains(':')) { return prefix + address }\n    return prefix + address + ':' + pveUrlPort()\n}\ndef pveApiBases = { ->\n    def own = pveHostProp('pve.node') ? pveHostUrl(pveHostProp('system.hostname')) : null\n    ([own, pveBaseUrl?.replaceAll('/+$', '')] +\n        pveHostProp('pve.api.hosts', '').tokenize(',').collect { pveHostUrl(it) })\n        .findAll { it }.unique()\n}\ndef pveGetAt = { String base, String path ->\n    def connection = new URL(base.replaceAll('/+$', '') + '/api2/json' + path).openConnection()\n    connection.setRequestMethod('GET')\n    connection.setConnectTimeout(pveTimeout)\n    connection.setReadTimeout(pveTimeout)\n    connection.setRequestProperty('Authorization', 'PVEAPIToken=' + pveToken)\n    connection.setRequestProperty('Accept', 'application/json')\n    int status = connection.responseCode\n    if (status == 401) {\n        throw new IOException('HTTP 401 for ' + path +\n            ' - the API token in pve.token.credential was rejected. Check its secret, and that it has a' +\n            ' PVEAuditor ACL. A token with privilege separation enabled needs its own ACL entry,' +\n            ' not just the one on its user.')\n    }\n    if (status == 403) {\n        throw new IOException('HTTP 403 for ' + path + ' (' + connection.responseMessage + ')' +\n            ' - the token in pve.token.credential lacks that privilege. The suite needs PVEAuditor on /.')\n    }\n    if (status < 200 || status >= 300) {\n        throw new IOException('HTTP ' + status + ' for ' + path)\n    }\n    def payload = new JsonSlurper().parse(connection.inputStream)\n    connection.disconnect()\n    return payload?.data\n}\ndef pveFailureStatus = { Exception failure ->\n    def match = failure.message =~ /^HTTP (\\d+) /\n    match.find() ? (match.group(1) as int) : null\n}\ndef pveActiveBase = null\ndef pveBasesFor = { String path ->\n    def bases = pveApiBases()\n    if (pveActiveBase in bases) { bases = [pveActiveBase] + (bases - pveActiveBase) }\n    path.startsWith('/nodes/') ? bases.take(2) : bases\n}\ndef pveGet = { String path ->\n    def bases = pveBasesFor(path)\n    Exception last = null\n    for (base in bases) {\n        try {\n            def data = pveGetAt(base, path)\n            pveActiveBase = base\n            return data\n        } catch (IOException failure) {\n            def status = pveFailureStatus(failure)\n            if (status != null && status < 500) { throw failure }\n            last = failure\n        }\n    }\n    throw last ?: new IOException('No Proxmox API address to ask: set pve.api.url')\n}\ndef pveSelfBase = pveHostUrl(pveHostProp('system.hostname'))\ndef pveWildValue = { value ->\n    (value == null ? '' : value.toString()).replaceAll('[^A-Za-z0-9_-]', '-')\n}\ndef pveDisplayName = { value ->\n    (value == null ? '' : value.toString()).replaceAll('#', ' ').trim()\n}\ndef pvePropValue = { value ->\n    URLEncoder.encode(value == null ? '' : value.toString(), 'UTF-8')\n}\ndef pveDiscover = { String id, String name, String description, Map properties,\n                    Map rawProperties = [:] ->\n    def pairs = properties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> 'auto.' + key + '=' + pvePropValue(value) }\n    pairs += rawProperties\n        .findAll { key, value -> value != null && !value.toString().trim().isEmpty() }\n        .collect { key, value -> key + '=' + pvePropValue(value) }\n    println(pveWildValue(id) + '##' + pveDisplayName(name ?: id) + '##' +\n            pveDisplayName(description) + '####' + pairs.join('&'))\n}\ndef pveRound = { double value ->\n    Math.round(value * 100.0d) / 100.0d\n}\ndef pveGB = { value ->\n    pveRound(((value ?: 0) as double) / 1000000000.0d)\n}\ndef pveGuestList = { ->\n    def resources = pveGet('/cluster/resources?type=vm') ?: []\n    if (resources.isEmpty()) {\n        System.err.println('/cluster/resources returned no guests. This endpoint is filtered by ' +\n            'token ACL rather than erroring, so an under-privileged token looks identical to an ' +\n            'empty cluster. Verify the token has VM.Audit on /vms.')\n    }\n    return resources.findAll { it.type in ['qemu', 'lxc'] && !it.template }\n}\ndef pveSizeLabel = { bytes ->\n    def value = (bytes ?: 0) as double\n    if (value <= 0) { return '' }\n    if (value >= 1e12d) { return String.format(Locale.ROOT, '%.1f TB', value / 1e12d) }\n    if (value >= 1e10d) { return String.format(Locale.ROOT, '%.0f GB', value / 1e9d) }\n    if (value >= 1e9d) { return String.format(Locale.ROOT, '%.1f GB', value / 1e9d) }\n    return String.format(Locale.ROOT, '%.0f MB', value / 1e6d)\n}\ndef pveGuestDiscover = { Map guest, Map rawProperties = [:] ->\n    def vmid = guest.vmid?.toString()\n    def kind = guest.type == 'qemu' ? 'virtual machine' : 'container'\n    def disk = pveSizeLabel(guest.maxdisk)\n    pveDiscover(\n        guest.id,\n        guest.name ?: (guest.type + '-' + vmid),\n        'Proxmox ' + kind + ' ' + vmid + (disk ? ', root disk ' + disk : ''),\n        [\n            pve_id  : guest.id,\n            pve_node: guest.node,\n            pve_type: guest.type,\n            pve_vmid: vmid,\n            pve_pool: guest.pool,\n            pve_tags: guest.tags\n        ],\n        rawProperties\n    )\n}\ndef pveStateStore = null\ndef pveRoleResult = null\nif (pveConfigError) {\n    System.err.println(pveConfigError)\n    return 2\n}\ntry {\n    pveGuestList().each { guest -> pveGuestDiscover(guest) }\n    return 0\n} catch (Exception exception) {\n    System.err.println('Proxmox guest discovery failed: ' + exception.message)\n    return 2\n}\n"
     },
     "discoveryInterval": "60m",
     "deleteInactiveInstances": false,

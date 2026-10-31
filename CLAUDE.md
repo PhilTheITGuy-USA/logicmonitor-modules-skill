@@ -52,7 +52,7 @@ write that mutation to a file and run the relevant script on it directly.
 
 `tests/test_tools.py` runs the scripts as subprocesses against:
 
-1. **Known-good** — `tests/fixtures/proxmox/` (the Proxmox VE v2 suite: 19 modules + its 2 dashboards as the
+1. **Known-good** — `tests/fixtures/proxmox/` (the Proxmox VE v2 suite: 23 modules + its 2 dashboards as the
    portal exported them, portal-verified), and `tests/fixtures/proxmox-v1/addCategory_Proxmox_VE.json`
    (v1's AppliesTo true() PropertySource, a kind v2 lacks). Must lint
    with zero ERRORs and pass `check` with reference resolution. A new check that fires on these

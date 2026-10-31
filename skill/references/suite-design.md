@@ -95,6 +95,17 @@ unreadable, not applicable to this object type). Print nothing → No Data. Pair
 indicator (`FeatureAvailable`, `SmartHealthKnown`) so "unknown" never alerts like "bad". Document each
 in `technicalNotes`. Never print 0 to keep a build check quiet.
 
+**A child that only copies its parent's state never alerts; the parent does.** When an instance has no
+state of its own and reports its parent's (a VLAN its bridge's, an SDN VNet its zone's, a guest its
+host's), giving it the parent's alerting datapoint turns one outage into 1 + N alerts that fire and
+clear together and say nothing the parent's alert does not. Report the state on a datapoint without a
+threshold (`Active`, a count) so the child still shows the outage, and keep the alerting datapoint on
+the parent. LogicMonitor's Dependent Alert Mapping will not fold the copies: it works on resources,
+not instances, and only on Ping and Host Status reachability alerts
+([doc](https://www.logicmonitor.com/support/dependent-alert-mapping)), so the module is the one place
+to stop them. Once the child gains a state of its own (an API that reports it per child), it earns an
+alert of its own **[Proxmox v2 design, user, 2026-10-31]**.
+
 ## 7. Topology
 
 Worth building only if the related objects are also monitored — as their own resources, or as
@@ -106,6 +117,16 @@ PropertySource that must change a resource's ERT needs priority 3 or more: the t
 highest-priority entry across all categories, and the built-in `net.l2` entry is priority 2
 **[portal, 2026-10-19]**. A vertex carries **one** key: lm.topo joins several into one ID the portal matches only against a resource carrying all of them **[portal, 2026-10-21]**. An edge between two resources other than the one running the TopologySource is drawn, and a resource wins over an instance with the same key; an instance-only guest is drawn under the host it runs on even when another resource holds the instance **[portal, 2026-10-22]**. **A resource a NetScan creates for a guest has no MAC ERI of its own:** it is only pinged, so `net.l2` (fed by SNMP/WMI in-guest data) never stamps its MAC. If the guest vertex is keyed by the bare MAC, the guest's own ERI PropertySource must stamp that bare MAC too, beside any product-prefixed key; otherwise the edge stops at the instance and the resource is drawn alone beside it, which looks like a duplicate on the map **[portal, 2026-10-26]**. See `collector-scripting.md` §9 for mechanics. Topology fan-out (per-VM config reads) is O(instances) —
 hourly interval.
+
+**What each map draws.** An edge that joins two instance-only vertices (bridge → VLAN, SDN zone → VNet,
+store → pool) is stored and drawn on either instance's own map, but the wide group or cluster map does
+not draw it: every edge that map drew had a resource at one end, so the child sat unconnected at the
+top **[portal, 2026-10-30; inferred rule from every edge on the screenshots]**. Where a layer should
+read in the overview, hang it off a resource where that is true (a zone under each node it spans, not
+under the bridge it rides on). The map's **Connections** filter hides edges of a type (all Network
+edges at once), but their vertices stay, unconnected; the **Resources** filter picks instances by name,
+not by type, so there is no hiding one kind of vertex **[portal, 2026-10-30]**. Say so rather than
+promise that unticking a layer gives the old map back.
 
 ## 8. Local testing
 

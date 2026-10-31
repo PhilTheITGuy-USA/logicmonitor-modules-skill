@@ -39,12 +39,24 @@ TopologySource: `other-module-types.md`.
 | `hostProps` | resource-level properties (`system.hostname`, custom props, `*.credential`) | AD, collection, PropertySource |
 | `taskProps` | instance-level properties during per-instance collection | Script collection only |
 | `instanceProps` | instance properties in some contexts | varies |
-| `datasourceinstanceProps` | every discovered instance of this module on the resource, keyed by instance, each with `.wildvalue` **[LM recipes]** | BatchScript collection |
+| `datasourceinstanceProps` | every discovered instance of this module on the resource, keyed by instance, each with `.wildvalue` **[LM recipes; portal-confirmed 2026-10-30]** | BatchScript collection |
 | `alertProps` | the triggering alert (`alert.datapoint`, `alert.instance.wildvalue`, …) **[LM recipes]** | Diagnostic / RemediationSource, alert-triggered runs only |
 
 `datasourceinstanceProps` lets a BatchScript loop over exactly the instances discovery produced —
 `datasourceinstanceProps.each { inst, props -> def wv = props.wildvalue ... }` — instead of
-re-deriving them from the API. Useful when the API needs a call per instance anyway.
+re-deriving them from the API. Useful when the API needs a call per instance anyway, and the way
+for a BatchScript to report instances the API cannot list cheaply: discovery finds them (hourly,
+an expensive read) and collection reports them from this binding at one call per poll. On a live
+Collector it delivered instances whose `auto.*` properties discovery set, and their values came
+out under their wildvalues **portal-confirmed** (Proxmox VLAN instances, 2026-10-30). Two cautions:
+
+- Read it defensively: check `binding.hasVariable`, that it is a `Map`, and that each entry's
+  properties are a `Map`, and skip what is not. One unexpected shape thrown up to the script's
+  outer `catch` fails the whole run, taking every other instance's data with it. Rebuild an id from
+  the instance's own properties if `wildvalue` is missing.
+- A Poll Now straight after Active Discovery found new instances may not hand them to the script
+  yet: they reported nothing until the module was re-imported **[inferred, portal 2026-10-30]**. Poll
+  again later before concluding the binding is empty.
 
 - Instance properties set by Active Discovery may appear **with or without the `auto.` prefix**. Read
   them through one helper that tries `taskProps[key]`, `taskProps['auto.'+key]`,
@@ -130,6 +142,12 @@ wildvalue##displayName##description####auto.key=value&auto.key2=value2
   `emit.instance`, collection must use `emit.dp` (or the identical fold) — see §5.
 - An under-privileged credential against a "filtered by permission" endpoint returns an empty list,
   not an error. Detect "returned nothing" and say on stderr that it may be permissions.
+- **A product upgrade can empty a filtered list the same way.** Proxmox VE 9 lists SDN zones in
+  `/cluster/resources` as type `network` (`network-type: zone`, name in `network`) where 8 used type
+  `sdn` (name in `sdn`), and still accepts `?type=sdn`, answering an empty list: the module reported
+  no state and nothing failed **portal-confirmed** (live target, PVE 9.2.3, 2026-10-30). Where a type
+  filter selects what you read, read unfiltered (or both ways) and accept every shape you know, and
+  test each version's shape in the harness.
 - **Put the server's own reason in a 401/403 message**, not a guess. A 403 is usually a valid
   credential short of one privilege, and the API often names it: Proxmox's status line read
   `403 Permission check failed (/, Sys.Modify)` for `/nodes/<node>/hardware/usb` while the same

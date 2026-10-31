@@ -5,8 +5,9 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE v2 suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, 2026-10-27), all 19 modules imported and
-collecting in a real portal, and its two dashboards as the portal exported them. They must
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, main at 4bdca7a, 2026-10-31), all 23 modules
+imported in a real portal and collecting where the lab has the feature (it has no Ceph, ZFS or
+replication), and its two dashboards as the portal exported them. They must
 lint with zero errors. tests/fixtures/proxmox-v1/ keeps v1's addCategory_Proxmox_VE, a
 known-good PropertySource on AppliesTo true(), a kind v2 does not have.
 
@@ -280,7 +281,7 @@ def module_must_pass() -> dict[str, dict]:
     return m
 
 
-ERI_CALL = "emitEri('proxmoxve', 1, keys, ert"
+ERI_CALL = "emitEri('proxmoxve', 3, keys, ert"
 
 
 def module_warns() -> dict[str, tuple[dict, str]]:
@@ -297,11 +298,11 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     # lm.topo joins a vertex's keys into one ID, and the portal then matches only a resource
     # carrying every one of them [portal, 2026-10-21].
     topo = load(TOPOLOGY)
-    one_key = "eri([pveTopoNodeVertexKey(clusterName, nodeName, nodeIps[nodeName])])"
+    one_key = "eriPreProcessor([key], lmTopoData.blockedKeys"
     attrs = json.loads(topo["collectionAttrs"])
     assert one_key in attrs["scriptgroovy"], "Topology fixture no longer carries " + one_key
     attrs["scriptgroovy"] = attrs["scriptgroovy"].replace(
-        one_key, "eri([pveTopoNodeVertexKey(clusterName, nodeName, nodeIps[nodeName]), pveTopoKey(clusterName, nodeName)])")
+        one_key, "eriPreProcessor([key, 'proxmoxve--' + key], lmTopoData.blockedKeys")
     x = copy.deepcopy(topo); x["collectionAttrs"] = json.dumps(attrs)
     m["topology vertex built from two keys"] = (x, "carrying all")
     # AD properties are stored as auto.<key>; a bare name groups nothing.
