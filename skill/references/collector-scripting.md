@@ -114,7 +114,8 @@ try {
   **[LM recipes]** — that is the auto-delete behaviour. With `autoDeleteInstances: false` the
   instances and their history stay **[portal]**, until an operator confirms they're retired and
   their history is no longer needed and deletes them by hand. That is the intended lifecycle: never
-  let discovery retire instances on its own. When "empty" could be a transient error (a
+  let discovery retire instances on its own -- except in a `*_Troubleshooter`, whose instances are
+  findings and which may auto-delete after 30 days (module-export-schema.md §3). When "empty" could be a transient error (a
   permissions-filtered list, a half-up API), still exit non-zero, so the log shows a failure rather
   than "nothing found".
 

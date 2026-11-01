@@ -35,7 +35,9 @@ Read these before writing any module. Each one shipped broken at least once.
 3. **Exit non-zero on failure; never zero-fill.** `return 0` on success; on any API/config failure
    write the reason to `System.err` and `return 2`. A non-zero exit keeps existing instances through
    an outage. Returning 0 with zeros produces confident wrong data. Pair this with
-   `deleteInactiveInstances: false` / `autoDeleteInstances: false` in Active Discovery.
+   `deleteInactiveInstances: false` / `autoDeleteInstances: false` in Active Discovery: what
+   deletes instances is a successful answer that leaves one out, and a deleted instance cannot
+   alert. Only a `*_Troubleshooter`, whose instances are findings, may auto-delete, after 30 days.
 4. **Every value printed must be numeric.** Strings ("running", "N/A", string-typed numbers) reach
    LogicMonitor as No Data. Map or convert before printing.
 5. **Withhold, don't fabricate.** If the source genuinely has no value (feature not configured,
@@ -69,7 +71,7 @@ module or dashboard JSON you write, edit or are asked to debug, and report what 
 
 - **`scripts/lm_lint_module.py <file.json|dir> ...`** — lints DataSource, PropertySource (plain and
   ERI) and TopologySource JSON for the silent failures above: batchscript keys missing
-  `##WILDVALUE##.`, `useWildValueAsUniqueIdentifier` off, auto-delete on, a `discoveryInterval`
+  `##WILDVALUE##.`, `useWildValueAsUniqueIdentifier` off, auto-delete on (outside a `*_Troubleshooter`), a `discoveryInterval`
   or TopologySource `collectionIntervalSec` the portal doesn't take, secrets not ending `.credential`, snippets loaded without the script's
   binding, reserved datapoint names, catch blocks returning 0, a `true()` PropertySource that
   can print or fail, TopologySource `collectionAttrs` as an object, REST-model JSON passed off as an

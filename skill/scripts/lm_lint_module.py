@@ -262,10 +262,16 @@ def check_scripts(module: dict, scripts: dict[str, tuple[str, str]], kind: str,
 
 def check_active_discovery(module: dict, report: Report) -> None:
     ad = module.get("activeDiscovery") or {}
-    for flag in ("deleteInactiveInstances", "autoDeleteInstances"):
-        if ad.get(flag):
-            report.error(f"activeDiscovery.{flag} is true -- an outage that makes discovery "
-                         f"fail or return nothing will delete instances and their history")
+    # A discovery that exits non-zero keeps its instances; what deletes them is a successful
+    # answer that leaves one out, and a deleted instance can no longer alert. Only a
+    # troubleshooter, whose instances are findings, may let a fixed one go -- after 30 days.
+    if ad.get("deleteInactiveInstances"):
+        report.error("activeDiscovery.deleteInactiveInstances is true -- it deletes instances and "
+                     "their history as soon as discovery leaves them out")
+    if ad.get("autoDeleteInstances") and not str(module.get("name", "")).endswith("_Troubleshooter"):
+        report.error("activeDiscovery.autoDeleteInstances is true -- an instance discovery leaves out, "
+                     "in a successful but incomplete answer, disappears and can no longer alert; only "
+                     "a *_Troubleshooter, whose instances are findings, may auto-delete (after 30 days)")
     # Grouping by an instance-level property is groupMethod "ilp" plus the property in
     # groupExpr, as a portal export of a hand-grouped module carries it [portal, 2026-10-22].
     if ad.get("groupMethod") == "ilp":

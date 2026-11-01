@@ -221,11 +221,27 @@ first release, and give an upgrade note when it must change.
 }
 ```
 
-Never auto-delete: a collection that exits non-zero during an outage must not tear down history.
-(LogicMonitor's own templates set `autoDeleteInstances: true`; this skill deliberately doesn't.)
-With auto-delete off, instances discovery no longer reports stay, history intact **[portal]**;
-retiring them is an operator's decision, made by hand once the object is confirmed gone and its
-history no longer needed.
+**Auto-delete stays off, with one exception.** LogicMonitor has two settings **[LM docs]**
+([Active Discovery](https://www.logicmonitor.com/support/active-discovery)):
+`deleteInactiveInstances` is *Delete Immediately* -- the instance and all its history go as soon as
+a discovery leaves it out; `autoDeleteInstances` alone is *Delete After 30 Days* -- the instance
+leaves the tree, its history stays 30 days and is re-associated if it is rediscovered. A discovery
+that exits non-zero deletes nothing (collector-scripting.md §3); what deletes is a
+successful answer that leaves an instance out -- a permissions-filtered empty list, a half-up API,
+a failed disk that drops off its controller's list -- and a deleted instance can no longer alert:
+"Toggle Automatically Delete Instance off if you want to receive alerts for instances even if they
+are not present" **[LM docs]**. (LogicMonitor's own templates set `autoDeleteInstances: true`; this
+skill deliberately doesn't.) With auto-delete off, instances discovery no longer reports stay,
+history intact **[portal]**; retiring them is an operator's decision, made by hand once the object
+is confirmed gone and its history no longer needed.
+
+The exception is a **`*_Troubleshooter`** DataSource, whose instances are findings, not things
+monitored: an instance it leaves out is a problem fixed, and a check that cannot run is itself a
+finding. It may set `autoDeleteInstances: true` with `deleteInactiveInstances: false`, as
+LogicMonitor's own troubleshooters must to let a fixed problem go **[inferred]**; clear its alerts
+by a datapoint that returns to healthy, not by the deletion, whose effect on an open alert
+LogicMonitor does not document. `lm_lint_module.py` errors on `deleteInactiveInstances` everywhere,
+and on `autoDeleteInstances` anywhere but a `*_Troubleshooter`.
 
 `discoveryInterval` takes only **`0m`** (on demand / property change only), **`15m`**, **`60m`**
 or **`1440m`** — not `"1d"` **[LM recipes]**; `lm_lint_module.py` errors on anything else. Use 15m

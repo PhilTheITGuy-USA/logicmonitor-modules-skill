@@ -188,7 +188,7 @@ used or life remaining), HA/failover behaviour, permission-filtered empties, sca
 - [ ] HTTP client choice recorded; proxy-aware (`proto.http`) if Collectors may sit behind a proxy
 - [ ] Sensible default thresholds and `alertBody` text on the datapoints that should alert
 - [ ] `useWildValueAsUniqueIdentifier: true`, stable migration-safe wildvalues
-- [ ] No auto-delete of instances; non-zero exit on failure
+- [ ] No auto-delete of instances (a `*_Troubleshooter` may, after 30 days); non-zero exit on failure
 - [ ] Groovy 4 clean, `//!/lib-groovy/v4` header
 - [ ] TLS bypass (if any) opt-in and default off
 - [ ] Expensive modules on long intervals and/or opt-in

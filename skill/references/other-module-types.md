@@ -56,7 +56,7 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   `doMapping` (bool), optional `alertSubject` / `alertBody`. Non-script EventSources (`wineventlog`,
   …) — clone a portal export, don't hand-author.
 - **ConfigSource** — DataSource-like: `"dataSourceType": 2`, `collectionMethod`, `collectionInterval`,
-  `collectionAttrs`, `multiInstance`, `activeDiscovery` (same rules: **auto-delete off**,
+  `collectionAttrs`, `multiInstance`, `activeDiscovery` (same rules: **auto-delete off** -- the troubleshooter exception is for DataSources,
   `discoveryInterval` one of `0m`/`15m`/`60m`/`1440m`), `fileFormat` (`arbitrary`, `json`, …) and
   `configChecks`. Ship at least a retrieval check — `{"type": "fetch", "name": "RetrievalTest",
   "severity": "warn", "triggerInterval": 0, "description": ""}` — and an ignore rule for volatile

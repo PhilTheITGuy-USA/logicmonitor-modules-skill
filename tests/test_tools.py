@@ -74,6 +74,13 @@ def module_mutations() -> dict[str, dict]:
     m["batchscript datapoint without ##WILDVALUE##."] = x
     x = copy.deepcopy(nodes); x["activeDiscovery"]["deleteInactiveInstances"] = True
     m["AD deleteInactiveInstances on"] = x
+    x = copy.deepcopy(nodes); x["activeDiscovery"]["autoDeleteInstances"] = True
+    m["AD autoDeleteInstances on"] = x
+    # A troubleshooter's instances are findings, so it may auto-delete -- after 30 days,
+    # never immediately: Delete Immediately drops history even for a finding that returns.
+    x = copy.deepcopy(nodes); x["name"] = "Proxmox_VE_Troubleshooter"
+    x["activeDiscovery"].update(autoDeleteInstances=True, deleteInactiveInstances=True)
+    m["troubleshooter deletes immediately"] = x
     x = copy.deepcopy(nodes); x["useWildValueAsUniqueIdentifier"] = False
     m["useWildValueAsUniqueIdentifier off"] = x
     x = copy.deepcopy(nodes); x["datapoints"][0]["name"] = "In"; x["datapoints"][0]["interpretExpr"] = "##WILDVALUE##.In"
@@ -278,6 +285,9 @@ def module_must_pass() -> dict[str, dict]:
     dp["statusDisplayNames"] = copy.deepcopy(STATUS_NAMES)
     dp["alertBody"] += "\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##)."
     m["status names, with the name in the alert body"] = x
+    x = copy.deepcopy(nodes); x["name"] = "Proxmox_VE_Troubleshooter"
+    x["activeDiscovery"].update(autoDeleteInstances=True, deleteInactiveInstances=False)
+    m["troubleshooter auto-deletes after 30 days"] = x
     return m
 
 
