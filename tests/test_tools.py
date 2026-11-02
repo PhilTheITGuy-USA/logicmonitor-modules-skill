@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE v2 suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, tag v2.3.2, 2026-11-02), all 24 modules
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, tag v2.4.0, 2026-11-02), all 24 modules
 imported in a real portal and collecting where the lab has the feature (it has no Ceph, ZFS or
 replication), and its two dashboards as the portal exported them. They must
 lint with zero errors. tests/fixtures/proxmox-v1/ keeps v1's addCategory_Proxmox_VE, a
@@ -404,6 +404,9 @@ def main() -> int:
     r = run(LINT + good_modules)
     expect("lint does not warn on the known-good modules' end-user text",
            "collection log" not in r.stdout, r.stdout)
+    # From v2.4.0 the fixtures read datasourceinstanceProps as ParamMaps [portal, 2026-11-02].
+    expect("lint does not warn on the known-good modules' datasourceinstanceProps reads",
+           "ParamMap" not in r.stdout, r.stdout)
 
     # The fixed read: an entry that answers get(String) is kept, whatever its class.
     with tempfile.TemporaryDirectory() as tmp:
