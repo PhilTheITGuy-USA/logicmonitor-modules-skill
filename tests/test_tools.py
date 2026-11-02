@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE v2 suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, branch troubleshooter, 2026-11-01), all 24 modules
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, tag v2.3.2, 2026-11-02), all 24 modules
 imported in a real portal and collecting where the lab has the feature (it has no Ceph, ZFS or
 replication), and its two dashboards as the portal exported them. They must
 lint with zero errors. tests/fixtures/proxmox-v1/ keeps v1's addCategory_Proxmox_VE, a
