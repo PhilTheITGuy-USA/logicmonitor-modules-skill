@@ -160,7 +160,9 @@ wildvalue##displayName##description####auto.key=value&auto.key2=value2
   the credential may see, ask it only when the list is empty, and exit non-zero naming the
   privilege when it may not (Proxmox: `/access/permissions?path=/vms` answers
   `{"/vms": {"VM.Audit": 1, ...}}`, `1` meaning it propagates to every child, `0` held there
-  alone). Where it can't, exit non-zero on every empty answer, accepting a failed discovery on a
+  alone; a privilege held on `/` without propagation is absent, `{"/vms": {}}` **[live target,
+  2026-11-02]**). The fix held on the live target: the same token afterwards kept every
+  instance. Where it can't, exit non-zero on every empty answer, accepting a failed discovery on a
   target that truly has none.
 - **A product upgrade can empty a filtered list the same way.** Proxmox VE 9 lists SDN zones in
   `/cluster/resources` as type `network` (`network-type: zone`, name in `network`) where 8 used type
