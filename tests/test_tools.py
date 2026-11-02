@@ -5,7 +5,7 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
     python tests/test_tools.py
 
 Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE v2 suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, main at 4bdca7a, 2026-10-31), all 23 modules
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, branch troubleshooter, 2026-11-01), all 24 modules
 imported in a real portal and collecting where the lab has the feature (it has no Ceph, ZFS or
 replication), and its two dashboards as the portal exported them. They must
 lint with zero errors. tests/fixtures/proxmox-v1/ keeps v1's addCategory_Proxmox_VE, a
@@ -74,13 +74,16 @@ def module_mutations() -> dict[str, dict]:
     m["batchscript datapoint without ##WILDVALUE##."] = x
     x = copy.deepcopy(nodes); x["activeDiscovery"]["deleteInactiveInstances"] = True
     m["AD deleteInactiveInstances on"] = x
-    x = copy.deepcopy(nodes); x["activeDiscovery"]["autoDeleteInstances"] = True
-    m["AD autoDeleteInstances on"] = x
-    # A troubleshooter's instances are findings, so it may auto-delete -- after 30 days,
-    # never immediately: Delete Immediately drops history even for a finding that returns.
+    # A troubleshooter's instances are findings, so it auto-deletes -- after 30 days, never
+    # immediately: Delete Immediately drops history even for a finding that returns.
     x = copy.deepcopy(nodes); x["name"] = "Proxmox_VE_Troubleshooter"
-    x["activeDiscovery"].update(autoDeleteInstances=True, deleteInactiveInstances=True)
+    x["activeDiscovery"].update(autoDeleteInstances=False, deleteInactiveInstances=True)
     m["troubleshooter deletes immediately"] = x
+    # The import reads autoDeleteInstances inverted: true keeps a fixed finding in the tree
+    # for good, as the first troubleshooter import did [portal, 2026-11-01].
+    x = copy.deepcopy(nodes); x["name"] = "Proxmox_VE_Troubleshooter"
+    x["activeDiscovery"].update(autoDeleteInstances=True, deleteInactiveInstances=False)
+    m["troubleshooter keeps its findings (autoDeleteInstances true)"] = x
     x = copy.deepcopy(nodes); x["useWildValueAsUniqueIdentifier"] = False
     m["useWildValueAsUniqueIdentifier off"] = x
     x = copy.deepcopy(nodes); x["datapoints"][0]["name"] = "In"; x["datapoints"][0]["interpretExpr"] = "##WILDVALUE##.In"
@@ -260,10 +263,10 @@ def other_module_mutations() -> dict[str, dict]:
                             "content": "$secret = '##vendor.api.password##'\nWrite-Output 'x'\nexit 0\n"}
     m["PowerShell token for a secret without .credential"] = x
     m["DiagnosticSource script not an object"] = other_module(11, script="println 'x'")
-    m["ConfigSource auto-deletes instances"] = other_module(
+    m["ConfigSource deletes instances immediately"] = other_module(
         6, collectionMethod="script", multiInstance=True, collectionAttrs=groovy,
         activeDiscovery={"discoveryMethod": "ad_script", "discoveryInterval": "60m",
-                         "deleteInactiveInstances": False, "autoDeleteInstances": True,
+                         "deleteInactiveInstances": True, "autoDeleteInstances": True,
                          "params": groovy})
     return m
 
@@ -286,8 +289,8 @@ def module_must_pass() -> dict[str, dict]:
     dp["alertBody"] += "\n\nStatus: ##ALERTVALUEDISPLAYSTATUSNAME## (##VALUE##)."
     m["status names, with the name in the alert body"] = x
     x = copy.deepcopy(nodes); x["name"] = "Proxmox_VE_Troubleshooter"
-    x["activeDiscovery"].update(autoDeleteInstances=True, deleteInactiveInstances=False)
-    m["troubleshooter auto-deletes after 30 days"] = x
+    x["activeDiscovery"].update(autoDeleteInstances=False, deleteInactiveInstances=False)
+    m["troubleshooter auto-deletes after 30 days (autoDeleteInstances false)"] = x
     return m
 
 
@@ -346,6 +349,12 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(load("Proxmox_VE_Cluster_Status.json"))
     x["activeDiscovery"]["params"]["content"] += "\nraw['predef.externalResourceType'] = 'HyperVisorCluster'\n"
     m["instance vertex typed HyperVisorCluster"] = (x, "HyperVisorCluster")
+    # autoDeleteInstances false is auto-delete ON after import: every Proxmox module shipped
+    # false landed deleting, and a wrong pve.node dropped two pools [portal, 2026-11-01].
+    x = copy.deepcopy(load(NODES)); x["activeDiscovery"]["autoDeleteInstances"] = False
+    m["AD autoDeleteInstances false (deletes after 30 days)"] = (x, "inverted")
+    x = copy.deepcopy(load(NODES)); del x["activeDiscovery"]["autoDeleteInstances"]
+    m["AD without autoDeleteInstances"] = (x, "set it")
     return m
 
 
@@ -384,7 +393,10 @@ def main() -> int:
     expect("known-good true() PropertySource (v1) lints with 0 errors", r.returncode == 0, r.stdout)
 
     r = run(LINT + [str(BAD_INPUT)])
-    expect("planted-bug eval input fails lint", r.returncode == 1 and r.stdout.count("ERROR") >= 5, r.stdout)
+    # Its auto-delete is planted twice: Delete Immediately (an ERROR) and autoDeleteInstances
+    # false, which the import reads as auto-delete on (a WARN).
+    expect("planted-bug eval input fails lint", r.returncode == 1 and r.stdout.count("ERROR") >= 4
+           and "inverted" in r.stdout, r.stdout)
 
     with tempfile.TemporaryDirectory() as tmp:
         for name, module in module_mutations().items():

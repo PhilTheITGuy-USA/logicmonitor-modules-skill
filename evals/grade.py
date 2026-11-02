@@ -48,7 +48,8 @@ def find_module(out: Path):
                 "collectionMethod": d.get("collectMethod"), "multiInstance": d.get("hasMultiInstances"),
                 "useWildValueAsUniqueIdentifier": d.get("useWildValueAsUUID"),
                 "datapoints": [{"name": dp.get("name"), "interpretExpr": dp.get("postProcessorParam")} for dp in d["dataPoints"]],
-                "activeDiscovery": {"deleteInactiveInstances": adc.get("deleteInactiveInstance"), "autoDeleteInstances": False},
+                "activeDiscovery": {"deleteInactiveInstances": adc.get("deleteInactiveInstance"),
+                                    "autoDeleteInstances": adc.get("persistentInstance")},
                 "_raw": d,
             }
     return None
@@ -74,8 +75,9 @@ def grade_datasource(out: Path):
             dps and all(e == "##WILDVALUE##." + dp.get("name") for e, dp in zip(exprs, dps)), str(exprs)),
         chk("useWildValueAsUniqueIdentifier is true", m.get("useWildValueAsUniqueIdentifier") is True,
             str(m.get("useWildValueAsUniqueIdentifier"))),
-        chk("AD never auto-deletes instances",
-            ad and not ad.get("deleteInactiveInstances") and not ad.get("autoDeleteInstances"),
+        # autoDeleteInstances is read inverted on import: true keeps instances [portal, 2026-11-01].
+        chk("AD keeps the instances discovery leaves out",
+            ad and not ad.get("deleteInactiveInstances") and ad.get("autoDeleteInstances") is True,
             f"deleteInactive={ad.get('deleteInactiveInstances')} autoDelete={ad.get('autoDeleteInstances')}"),
         chk("Credential read from a property ending in .credential",
             re.search(r"['\"][\w.]+\.credential['\"]", g) is not None,
@@ -102,7 +104,7 @@ def grade_diagnosis(out: Path):
             str([dp.get("interpretExpr") for dp in dps])),
         chk("Explanation names ##WILDVALUE## as the root cause", "##WILDVALUE##" in expl, "mentioned" if "##WILDVALUE##" in expl else "not mentioned"),
         chk("useWildValueAsUniqueIdentifier set true", m.get("useWildValueAsUniqueIdentifier") is True, str(m.get("useWildValueAsUniqueIdentifier"))),
-        chk("Auto-delete turned off", not ad.get("deleteInactiveInstances") and not ad.get("autoDeleteInstances"),
+        chk("Auto-delete turned off", not ad.get("deleteInactiveInstances") and ad.get("autoDeleteInstances") is True,
             f"{ad.get('deleteInactiveInstances')}/{ad.get('autoDeleteInstances')}"),
         chk("State mapped to a number rather than printed raw",
             re.search(r"\?\s*1\s*:\s*0|\[\s*['\"]?\w+['\"]?\s*:\s*\d|return\s+1\b", g) is not None,

@@ -35,9 +35,11 @@ Read these before writing any module. Each one shipped broken at least once.
 3. **Exit non-zero on failure; never zero-fill.** `return 0` on success; on any API/config failure
    write the reason to `System.err` and `return 2`. A non-zero exit keeps existing instances through
    an outage. Returning 0 with zeros produces confident wrong data. Pair this with
-   `deleteInactiveInstances: false` / `autoDeleteInstances: false` in Active Discovery: what
+   `deleteInactiveInstances: false` in Active Discovery, and decide auto-delete per module: what
    deletes instances is a successful answer that leaves one out, and a deleted instance cannot
-   alert. Only a `*_Troubleshooter`, whose instances are findings, may auto-delete, after 30 days.
+   alert. **`autoDeleteInstances` is read inverted on import** -- `true` keeps instances, `false`
+   deletes them after 30 days [portal]. Keep them where disappearing is the failure (pools, disks,
+   services); let them go for objects that come and go by design and a `*_Troubleshooter`'s findings.
 4. **Every value printed must be numeric.** Strings ("running", "N/A", string-typed numbers) reach
    LogicMonitor as No Data. Map or convert before printing.
 5. **Withhold, don't fabricate.** If the source genuinely has no value (feature not configured,

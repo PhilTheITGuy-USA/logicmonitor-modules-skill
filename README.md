@@ -14,7 +14,7 @@ Extended with LogicMonitor's own authoring guidance,
 Log/Event/Config/Diagnostic/Remediation module types, and a second, warn-only tier of dashboard
 vocabulary from LM's export corpus. That material is paraphrased, not copied, and tagged
 **[LM recipes]** wherever it is used — LogicMonitor's word, not yet observed in a portal here. Where
-it conflicts with portal experience (e.g. its templates auto-delete instances), the skill keeps the
+it conflicts with portal experience (e.g. what its templates' Active Discovery settings do), the skill keeps the
 portal's answer and says so. To refresh, diff the repo from `a7b45b6` and re-tag what changed.
 
 ## Layout

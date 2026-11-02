@@ -166,7 +166,7 @@
     },
     "discoveryInterval": "1440m",
     "deleteInactiveInstances": false,
-    "autoDeleteInstances": false,
+    "autoDeleteInstances": true,
     "disableDiscoveredInstances": false,
     "groupMethod": "ilp",
     "filters": [],

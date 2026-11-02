@@ -123,7 +123,9 @@ def normalise(raw: dict, report: Report) -> dict:
             module["activeDiscovery"] = {
                 "params": {"content": method.get("groovyScript", "")},
                 "deleteInactiveInstances": adc.get("deleteInactiveInstance"),
-                "autoDeleteInstances": False,
+                # REST persistentInstance (true = keep) is what the export's inverted
+                # autoDeleteInstances becomes on import [portal, 2026-11-01].
+                "autoDeleteInstances": adc.get("persistentInstance"),
             }
         return module
     return raw
@@ -263,15 +265,31 @@ def check_scripts(module: dict, scripts: dict[str, tuple[str, str]], kind: str,
 def check_active_discovery(module: dict, report: Report) -> None:
     ad = module.get("activeDiscovery") or {}
     # A discovery that exits non-zero keeps its instances; what deletes them is a successful
-    # answer that leaves one out, and a deleted instance can no longer alert. Only a
-    # troubleshooter, whose instances are findings, may let a fixed one go -- after 30 days.
+    # answer that leaves one out, and a deleted instance can no longer alert. Auto-delete is a
+    # decision per module: right for objects that come and go by design and for a
+    # troubleshooter's findings, wrong where an instance disappearing is the failure.
+    # autoDeleteInstances is read INVERTED on import: false ticks "Automatically Delete
+    # Instances" (after 30 days) and true leaves it off [portal UI and REST, 2026-11-01].
     if ad.get("deleteInactiveInstances"):
         report.error("activeDiscovery.deleteInactiveInstances is true -- it deletes instances and "
                      "their history as soon as discovery leaves them out")
-    if ad.get("autoDeleteInstances") and not str(module.get("name", "")).endswith("_Troubleshooter"):
-        report.error("activeDiscovery.autoDeleteInstances is true -- an instance discovery leaves out, "
-                     "in a successful but incomplete answer, disappears and can no longer alert; only "
-                     "a *_Troubleshooter, whose instances are findings, may auto-delete (after 30 days)")
+    if ad:
+        auto = ad.get("autoDeleteInstances")
+        if str(module.get("name", "")).endswith("_Troubleshooter"):
+            if auto is not False:
+                report.error("activeDiscovery.autoDeleteInstances is not false on a *_Troubleshooter -- "
+                             "the import reads the field inverted, so a fixed finding would stay in the "
+                             "tree; false is what auto-deletes (after 30 days)")
+        elif auto is False:
+            report.warn("activeDiscovery.autoDeleteInstances is false, which the import reads as "
+                        "Automatically Delete Instances ON (after 30 days) -- the field is inverted. "
+                        "Right where an instance discovery leaves out is a retired object (a deleted "
+                        "guest, job or interface); where its disappearing is the failure (a pool, "
+                        "disk, service), set true so the instance stays")
+        elif auto is not True:
+            report.warn("activeDiscovery has no autoDeleteInstances -- set it: true keeps the "
+                        "instances discovery leaves out, false deletes them after 30 days (the "
+                        "import reads the field inverted)")
     # Grouping by an instance-level property is groupMethod "ilp" plus the property in
     # groupExpr, as a portal export of a hand-grouped module carries it [portal, 2026-10-22].
     if ad.get("groupMethod") == "ilp":

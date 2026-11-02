@@ -85,7 +85,7 @@
     },
     "discoveryInterval": "60m",
     "deleteInactiveInstances": false,
-    "autoDeleteInstances": false,
+    "autoDeleteInstances": true,
     "disableDiscoveredInstances": false,
     "groupMethod": "none",
     "filters": []

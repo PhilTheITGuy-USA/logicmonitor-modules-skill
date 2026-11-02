@@ -17,7 +17,7 @@
   "activeDiscovery": {
     "enabled": true, "discoveryMethod": "ad_script",
     "params": {"type": "groovy", "content": "getVolumes().each { v -> println v.name + '##' + v.name }\nreturn 0"},
-    "discoveryInterval": "60m", "deleteInactiveInstances": true, "autoDeleteInstances": true,
+    "discoveryInterval": "60m", "deleteInactiveInstances": true, "autoDeleteInstances": false,
     "disableDiscoveredInstances": false, "groupMethod": "none", "filters": []
   }
 }

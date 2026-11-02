@@ -111,11 +111,11 @@ try {
 - A fourth legitimate shape: **nothing to report** (feature not installed) → print nothing,
   `return 0`, and say so on stderr for AD. **Only safe for AD with auto-delete off.** LogicMonitor
   states that an AD script exiting 0 with empty output removes every previously discovered instance
-  **[LM recipes]** — that is the auto-delete behaviour. With `autoDeleteInstances: false` the
-  instances and their history stay **[portal]**, until an operator confirms they're retired and
-  their history is no longer needed and deletes them by hand. That is the intended lifecycle: never
-  let discovery retire instances on its own -- except in a `*_Troubleshooter`, whose instances are
-  findings and which may auto-delete after 30 days (module-export-schema.md §3). When "empty" could be a transient error (a
+  **[LM recipes]** — that is the auto-delete behaviour, and it happened: a wrong node name gave an
+  empty pool list and both pools left the tree **[portal, 2026-11-01]**. Auto-delete is off with
+  `autoDeleteInstances: true` -- the import reads the field inverted -- and is a decision per
+  module: on for objects that come and go by design and for a `*_Troubleshooter`'s findings, off
+  where an instance disappearing is the failure (module-export-schema.md §3). When "empty" could be a transient error (a
   permissions-filtered list, a half-up API), still exit non-zero, so the log shows a failure rather
   than "nothing found".
 
