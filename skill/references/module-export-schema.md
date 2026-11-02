@@ -93,6 +93,9 @@ observed in a portal here.
   Empty string = no alert.
 - `alertBody` tokens: `##INSTANCE##`, `##VALUE##`, `##START##`, `##DURATION##`, `##HOST##`,
   `##DATAPOINT##` **[LM convention]**. Say what's wrong *and* what it breaks.
+  `##DSIDESCRIPTION##` renders the **instance's description** -- the fourth field of an AD line --
+  so per-instance detail too long for its name (a finding and its fix) reaches the alert
+  **[portal, 2026-11-01]**.
 - **Reserved names**: the portal refused a datapoint named `In` on import. **[portal]** Keep a
   reserved-name list in your build and add to it whenever the portal rejects one.
 - Names: **PascalCase**, matching LM suites (`CPUUsagePercent`, `MemoryUsedMB`, `DataRateRxMB`,

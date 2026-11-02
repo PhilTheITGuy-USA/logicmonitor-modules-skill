@@ -291,6 +291,9 @@ def module_must_pass() -> dict[str, dict]:
     x = copy.deepcopy(nodes); x["name"] = "Proxmox_VE_Troubleshooter"
     x["activeDiscovery"].update(autoDeleteInstances=False, deleteInactiveInstances=False)
     m["troubleshooter auto-deletes after 30 days (autoDeleteInstances false)"] = x
+    # ##DSIDESCRIPTION## renders the instance description in an alert [portal, 2026-11-01].
+    x = copy.deepcopy(nodes); x["datapoints"][0]["alertBody"] += "\n\n##DSIDESCRIPTION##"
+    m["alert body carrying the instance description (##DSIDESCRIPTION##)"] = x
     return m
 
 

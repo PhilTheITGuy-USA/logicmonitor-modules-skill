@@ -62,6 +62,9 @@ Implements LMv1 for you. Most useful cmdlets for module work:
   collection — up to one full interval after import. A freshly imported 60-minute module with good
   Poll Now output, an empty Raw Data table and blank widgets is waiting, not broken. To see stored
   data sooner, shorten the interval in the portal for the test and set it back afterwards.
+- **Poll Now raises no alert** **[portal, 2026-11-01]**: a Poll Now value past the threshold opened
+  nothing, and the next scheduled poll with the same value did. Thresholds are evaluated on
+  scheduled collections only, so test an alert -- and its clearing -- by waiting for one.
 - Resource → **Info** shows properties, including `system.categories` set by PropertySources.
 - Collector debug console (`!groovy`, `!adlist`, `!tlist` etc.) — see below for how to reach it.
 

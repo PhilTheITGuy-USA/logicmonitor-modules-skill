@@ -57,6 +57,12 @@ out under their wildvalues **portal-confirmed** (Proxmox VLAN instances, 2026-10
 - A Poll Now straight after Active Discovery found new instances may not hand them to the script
   yet: they reported nothing until the module was re-imported **[inferred, portal 2026-10-30]**. Poll
   again later before concluding the binding is empty.
+- **Don't make it the only source of a new instance's data.** A troubleshooter's instance, created
+  when a problem appeared, read No Data on every scheduled poll while its collection printed only
+  the binding's instances: the binding lacked the instance or its wildvalue (not told apart)
+  **[portal, 2026-11-01]**. Where the script can work out its instance ids itself, print every one
+  of them and use the binding only to add what it cannot derive; have discovery stamp the id as an
+  `auto.*` property too, so an entry without `wildvalue` can still be named.
 
 - Instance properties set by Active Discovery may appear **with or without the `auto.` prefix**. Read
   them through one helper that tries `taskProps[key]`, `taskProps['auto.'+key]`,
