@@ -358,7 +358,20 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     m["AD autoDeleteInstances false (deletes after 30 days)"] = (x, "inverted")
     x = copy.deepcopy(load(NODES)); del x["activeDiscovery"]["autoDeleteInstances"]
     m["AD without autoDeleteInstances"] = (x, "set it")
+    # datasourceinstanceProps entries are ParamMaps: a Map filter dropped every instance, and a
+    # pulled disk read No Data instead of 0 [portal, 2026-11-02].
+    x = copy.deepcopy(load(NODES))
+    x["collectionAttrs"]["content"] += BINDING_READ.format(entry="props instanceof Map")
+    m["datasourceinstanceProps entries filtered as Map"] = (x, "ParamMap")
+    x = copy.deepcopy(load(NODES))
+    x["collectionAttrs"]["content"] += "\ndatasourceinstanceProps.each { String name, Map props -> println(props.get('wildvalue')) }\n"
+    m["datasourceinstanceProps entry typed Map"] = (x, "ParamMap")
     return m
+
+
+BINDING_READ = ("\ndef instances = binding.hasVariable('datasourceinstanceProps') ? datasourceinstanceProps : null\n"
+                "if (instances instanceof Map) {{ instances.findAll {{ name, props -> {entry} }}.each {{ name, props -> "
+                "println(props.get('wildvalue')) }} }}\n")
 
 
 def main() -> int:
@@ -391,6 +404,17 @@ def main() -> int:
     r = run(LINT + good_modules)
     expect("lint does not warn on the known-good modules' end-user text",
            "collection log" not in r.stdout, r.stdout)
+
+    # The fixed read: an entry that answers get(String) is kept, whatever its class.
+    with tempfile.TemporaryDirectory() as tmp:
+        x = copy.deepcopy(load(NODES))
+        x["collectionAttrs"]["content"] += BINDING_READ.format(
+            entry="props instanceof Map || (props != null && props.metaClass.respondsTo(props, 'get', 'wildvalue'))")
+        path = Path(tmp) / "m.json"
+        path.write_text(json.dumps(x), encoding="utf-8")
+        r = run(LINT + [str(path)])
+        expect("lint does not warn on a datasourceinstanceProps read that accepts ParamMap",
+               r.returncode == 0 and "ParamMap" not in r.stdout, r.stdout)
 
     r = run(LINT + [str(GOOD_V1 / "addCategory_Proxmox_VE.json")])
     expect("known-good true() PropertySource (v1) lints with 0 errors", r.returncode == 0, r.stdout)

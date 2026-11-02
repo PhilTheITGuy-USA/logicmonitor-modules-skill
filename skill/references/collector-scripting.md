@@ -39,7 +39,7 @@ TopologySource: `other-module-types.md`.
 | `hostProps` | resource-level properties (`system.hostname`, custom props, `*.credential`) | AD, collection, PropertySource |
 | `taskProps` | instance-level properties during per-instance collection | Script collection only |
 | `instanceProps` | instance properties in some contexts | varies |
-| `datasourceinstanceProps` | every discovered instance of this module on the resource, keyed by instance, each with `.wildvalue` **[LM recipes; portal-confirmed 2026-10-30]** | BatchScript collection |
+| `datasourceinstanceProps` | every discovered instance of this module on the resource: a `java.util.HashMap` keyed `<module name>-<instance name>`, each entry a `com.santaba.common.util.ParamMap` (**not a `Map`**) with `wildvalue` **[LM recipes; portal-confirmed 2026-10-30, 2026-11-02]** | BatchScript collection, scheduled polls and Poll Now |
 | `alertProps` | the triggering alert (`alert.datapoint`, `alert.instance.wildvalue`, …) **[LM recipes]** | Diagnostic / RemediationSource, alert-triggered runs only |
 
 `datasourceinstanceProps` lets a BatchScript loop over exactly the instances discovery produced —
@@ -50,17 +50,31 @@ an expensive read) and collection reports them from this binding at one call per
 Collector it delivered instances whose `auto.*` properties discovery set, and their values came
 out under their wildvalues **portal-confirmed** (Proxmox VLAN instances, 2026-10-30). Two cautions:
 
-- Read it defensively: check `binding.hasVariable`, that it is a `Map`, and that each entry's
-  properties are a `Map`, and skip what is not. One unexpected shape thrown up to the script's
+- **Each entry is a `ParamMap`, not a `java.util.Map`** **[portal, 2026-11-02]**. Its keys are
+  `wildvalue`, `wildvalue2`, `wildalias`, `system.instanceId`, `system.instanceDescription`, the
+  `auto.*` properties discovery set and the `predef.*` ones. An entry filter `props instanceof Map`,
+  or a closure parameter typed `Map`, drops every instance on a Collector while a harness built
+  from plain maps passes: on the Proxmox lab a disk pulled from its node read No Data, not the 0
+  that alerts, until the filter accepted any entry answering `get(String)`
+  (`props instanceof Map || props.metaClass.respondsTo(props, 'get', 'wildvalue')`). Test with a
+  get/set-only stand-in, as for `hostProps`; `lm_lint_module.py` warns on the Map filter.
+- Read it defensively otherwise: check `binding.hasVariable` and that the binding is a `Map`, and
+  skip an entry that does not answer `get(String)`. One unexpected shape thrown up to the script's
   outer `catch` fails the whole run, taking every other instance's data with it. Rebuild an id from
   the instance's own properties if `wildvalue` is missing.
+- A diagnostic printed on stderr is invisible (the portal shows none on exit 0), but Poll Now's
+  raw `scriptOutput` shows a plain text line among the `wv.dp=value` lines, which the Collector
+  ignores: print the binding's classes and keys there to see what a Collector really hands over.
+  A temporary numeric datapoint (say, the count of entries read) shows the same for scheduled
+  polls. A scheduled poll right after an import may still run the old script: one 2½ minutes
+  after did, the next one ran the new **[portal, 2026-11-02]**.
 - A Poll Now straight after Active Discovery found new instances may not hand them to the script
   yet: they reported nothing until the module was re-imported **[inferred, portal 2026-10-30]**. Poll
   again later before concluding the binding is empty.
 - **Don't make it the only source of a new instance's data.** A troubleshooter's instance, created
   when a problem appeared, read No Data on every scheduled poll while its collection printed only
-  the binding's instances: the binding lacked the instance or its wildvalue (not told apart)
-  **[portal, 2026-11-01]**. Where the script can work out its instance ids itself, print every one
+  the binding's instances **[portal, 2026-11-01]** -- most likely the `Map` filter above, which
+  read no entry at all **[inferred, 2026-11-02]**. Where the script can work out its instance ids itself, print every one
   of them and use the binding only to add what it cannot derive; have discovery stamp the id as an
   `auto.*` property too, so an entry without `wildvalue` can still be named.
 

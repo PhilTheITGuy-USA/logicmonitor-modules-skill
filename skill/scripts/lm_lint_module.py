@@ -260,6 +260,31 @@ def check_scripts(module: dict, scripts: dict[str, tuple[str, str]], kind: str,
     # in the discovery script does not protect a bypass in the collection script.
     for slot, text in groovy.items():
         check_tls_bypass(slot, text, report)
+        check_instance_binding(slot, text, report)
+
+
+# datasourceinstanceProps is a java.util.HashMap whose entries are ParamMaps, not Maps
+# [portal, 2026-11-02]: an entry filter `props instanceof Map`, or a closure parameter typed
+# Map, drops every instance on a Collector while a test with plain maps passes.
+BINDING_ITERATION = r"\b(?:{names})\s*\??\.(?:each|findAll|collect|collectEntries|find|every|any)\s*"
+ENTRY_TYPED_MAP = r"\{{\s*(?:[\w.]+\s+)?\w+\s*,\s*(?:java\.util\.)?Map\s+\w+\s*->"
+ENTRY_INSTANCEOF = r"\{{\s*\w+\s*,\s*(\w+)\s*->[^}}]*?\b(\w+)\s+instanceof\s+(?:java\.util\.)?Map\b(?!\s*\|\|)"
+
+
+def check_instance_binding(slot: str, text: str, report: Report) -> None:
+    if "datasourceinstanceProps" not in text:
+        return
+    # The binding itself, or a variable assigned from it; other closures over Maps are fine.
+    names = {"datasourceinstanceProps"} | set(
+        re.findall(r"\b(\w+)\s*=[^=\n][^\n]*\bdatasourceinstanceProps\b", text))
+    lead = BINDING_ITERATION.format(names="|".join(sorted(map(re.escape, names))))
+    hit = re.search(lead + ENTRY_TYPED_MAP.format(), text) or next(
+        (m for m in re.finditer(lead + ENTRY_INSTANCEOF.format(), text) if m.group(1) == m.group(2)), None)
+    if hit:
+        report.warn(f"{slot} script reads datasourceinstanceProps entries as a Map "
+                    f"({hit.group(0).strip()[:60]!r}) -- each entry is a "
+                    f"com.santaba.common.util.ParamMap, not a java.util.Map: the check drops "
+                    f"every instance on a Collector. Accept any entry that answers get(String)")
 
 
 def check_active_discovery(module: dict, report: Report) -> None:

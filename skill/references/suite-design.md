@@ -281,7 +281,8 @@ has no address (Proxmox ships no VIP).
   - `netscanProps` and `hostProps` are `com.santaba.common.util.ParamMap`, **not a
     `java.util.Map`**: `get(key)`, `get(key, default)`, `set(key, value)`, no `put`, no
     iteration. A closure parameter typed `Map` rejects it with a MissingMethodException that
-    shows only on a Collector -- test with a get/set-only stand-in;
+    shows only on a Collector -- test with a get/set-only stand-in. So is every entry of a
+    BatchScript's `datasourceinstanceProps` (collector-scripting.md) **[portal, 2026-11-02]**;
   - `lm.api` 0 is a factory, `lmApiSnippetFactory(props, http, lmDebug)`, needing a
     `proto.http` 0 client (`httpSnippetFactory(props)`) and an `lm.debug` 1 logger
     (`debugSnippetFactory(out, debug, log, context)`). Its client **only reads** (device lists,
