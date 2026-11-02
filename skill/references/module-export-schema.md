@@ -226,7 +226,8 @@ first release, and give an upgrade note when it must change.
 landed with the box ticked (REST `autoDiscoveryConfig.persistentInstance: false`) and auto-deleted
 instances; the one shipped `true` landed unticked (`persistentInstance: true`) and kept a fixed
 finding. The import stores the value as `persistentInstance` unchanged, so read the export field as
-"keep instances". (LogicMonitor's own templates set `true`, which on import keeps them.)
+"keep instances". The audit log labels that stored value *Automatically Delete Instances* all the
+same: ticking the box logs "Automatically Delete Instances changed FROM: true TO: false". (LogicMonitor's own templates set `true`, which on import keeps them.)
 `deleteInactiveInstances` is not inverted: `false` with auto-delete on is *Delete after 30 days*
 **[portal, 2026-11-01]**; `true` is *Delete Immediately* **[LM docs]**.
 
