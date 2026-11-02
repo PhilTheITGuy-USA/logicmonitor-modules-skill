@@ -114,6 +114,11 @@ try {
   collection log, `errOutput` or stderr.
 - **Fan-out over sub-objects** (one call per node/host): filter to reachable ones first, then a
   per-item `try` that logs to `System.err` and continues, so one dead member doesn't blank the rest.
+  **In collection only.** In Active Discovery with auto-delete on, a member skipped this way
+  retires its instances: a guest config that failed to read dropped that guest's VLANs, and a
+  swallowed error on a job list answered "no jobs" (Proxmox suite review, 2026-11-02). There,
+  read everything first, and exit non-zero, printing nothing, if any read failed or a time
+  budget ran out.
 - A fourth legitimate shape: **nothing to report** (feature not installed) → print nothing,
   `return 0`, and say so on stderr for AD. **Only safe for AD with auto-delete off.** LogicMonitor
   states that an AD script exiting 0 with empty output removes every previously discovered instance
@@ -148,7 +153,15 @@ wildvalue##displayName##description####auto.key=value&auto.key2=value2
   writes this line for you, adds `auto.` to bare keys and folds the wildvalue itself. If AD uses
   `emit.instance`, collection must use `emit.dp` (or the identical fold) — see §5.
 - An under-privileged credential against a "filtered by permission" endpoint returns an empty list,
-  not an error. Detect "returned nothing" and say on stderr that it may be permissions.
+  not an error. Detect "returned nothing" and say on stderr that it may be permissions. **With
+  auto-delete on, a successful empty discovery then retires every instance** -- it happened: a
+  Proxmox token without `VM.Audit` read every backup job's guest list as empty, and all 8 Backups
+  instances left the tree **[live target and portal, 2026-11-02]**. Where the API can say what
+  the credential may see, ask it only when the list is empty, and exit non-zero naming the
+  privilege when it may not (Proxmox: `/access/permissions?path=/vms` answers
+  `{"/vms": {"VM.Audit": 1, ...}}`, `1` meaning it propagates to every child, `0` held there
+  alone). Where it can't, exit non-zero on every empty answer, accepting a failed discovery on a
+  target that truly has none.
 - **A product upgrade can empty a filtered list the same way.** Proxmox VE 9 lists SDN zones in
   `/cluster/resources` as type `network` (`network-type: zone`, name in `network`) where 8 used type
   `sdn` (name in `sdn`), and still accepts `?type=sdn`, answering an empty list: the module reported
