@@ -91,6 +91,11 @@ observed in a portal here.
 - `derive` with `min: "0"` for cumulative counters.
 - `threshold`: `"<op> warn error critical"`, e.g. `"> 90 95 98"`, `"< 1 1 1"` for an up/down flag.
   Empty string = no alert.
+- `triggerInterval` (`alertTransitionInterval` in the API) counts the polls **after** the first
+  that must also exceed: `2` alerts on the **third** poll in a row, not the second **[portal,
+  2026-11-04]** (Proxmox v2 `StartAtBootNotRunning`, 3-minute polls: over at 12:06, 12:09 and
+  12:12, alert at 12:12). Size it as `N - 1` for "N polls in a row", and say the time in the
+  alert docs from the first bad poll. `clearInterval` `0` cleared on the first good poll.
 - `alertBody` tokens: `##INSTANCE##`, `##VALUE##`, `##START##`, `##DURATION##`, `##HOST##`,
   `##DATAPOINT##` **[LM convention]**. Say what's wrong *and* what it breaks.
   `##DSIDESCRIPTION##` renders the **instance's description** -- the fourth field of an AD line --
