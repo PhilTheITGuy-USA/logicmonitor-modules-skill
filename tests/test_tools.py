@@ -4,10 +4,10 @@ Self-test for the skill's bundled scripts. Run before committing any change to t
 
     python tests/test_tools.py
 
-Known-good input: tests/fixtures/proxmox/ -- the Proxmox VE v2 suite's built exports
-(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, tag v2.5.0, 2026-11-04), all 24 modules
-imported in a real portal and collecting where the lab has the feature (it has no Ceph, ZFS or
-replication), and its two dashboards as the portal exported them. They must
+Known-good input: tests/fixtures/proxmox/ -- 17 of the Proxmox VE v2 suite's built exports
+(github.com/PhilTheITGuy-USA/Proxmox-LogicModule.v2, tag v2.5.0, 2026-11-04), the ones a test
+names or a dashboard references, imported in a real portal and collecting where the lab has the
+feature (it has no Ceph, ZFS or replication), and its two dashboards as the portal exported them. They must
 lint with zero errors. tests/fixtures/proxmox-v1/ keeps v1's addCategory_Proxmox_VE, a
 known-good PropertySource on AppliesTo true(), a kind v2 does not have.
 

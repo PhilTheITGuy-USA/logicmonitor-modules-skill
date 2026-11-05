@@ -52,8 +52,8 @@ write that mutation to a file and run the relevant script on it directly.
 
 `tests/test_tools.py` runs the scripts as subprocesses against:
 
-1. **Known-good** — `tests/fixtures/proxmox/` (the Proxmox VE v2 suite: 23 modules + its 2 dashboards as the
-   portal exported them, portal-verified), and `tests/fixtures/proxmox-v1/addCategory_Proxmox_VE.json`
+1. **Known-good** — `tests/fixtures/proxmox/` (from the Proxmox VE v2 suite: the 17 modules a test names or a
+   dashboard references + its 2 dashboards as the portal exported them, portal-verified), and `tests/fixtures/proxmox-v1/addCategory_Proxmox_VE.json`
    (v1's AppliesTo true() PropertySource, a kind v2 lacks). Must lint
    with zero ERRORs and pass `check` with reference resolution. A new check that fires on these
    fixtures is wrong, or the fixtures need a deliberate, portal-verified refresh.
