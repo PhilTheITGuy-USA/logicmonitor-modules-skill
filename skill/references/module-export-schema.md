@@ -102,6 +102,10 @@ observed in a portal here.
   8.36, 21.37, 11.57, 20.24, 18.14 over 25 minutes, no alert). For a noisy gauge, use one level.
   An open alert does follow a value down: an error ended and a warning opened on the same poll,
   with no wait.
+- A value moving **down** a band does not restart the count **[portal, 2026-11-06]** (`> 90 95 98`
+  with `triggerInterval` 5: nine polls between 92 and 96.7 never alerted, then a warning opened on
+  the sixth poll counted from the last move up, which sat in the error band). So a value stays
+  silent only while it moves up at least once every `triggerInterval` polls.
 - `alertBody` tokens: `##INSTANCE##`, `##VALUE##`, `##START##`, `##DURATION##`, `##HOST##`,
   `##DATAPOINT##` **[LM convention]**. Say what's wrong *and* what it breaks.
   `##DSIDESCRIPTION##` renders the **instance's description** -- the fourth field of an AD line --
