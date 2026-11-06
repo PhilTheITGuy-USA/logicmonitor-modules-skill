@@ -54,7 +54,15 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
 - **EventSource** — `"collectionMethod": "scriptevent"`, `"collectionAttrs": {"type": "groovy",
   "content": ...}`, plus alert behaviour: `severity`, `clearAfterAck` (bool), `clearAfterMin` (int),
   `doMapping` (bool), optional `alertSubject` / `alertBody`. Non-script EventSources (`wineventlog`,
-  …) — clone a portal export, don't hand-author.
+  …) — clone a portal export, don't hand-author. **A portal's own Script EventSource reads
+  differently [portal, 2026-11-05]:** REST and `?format=file` both return `collector: scriptevent`,
+  `groovyScript`, `scriptType: embed`, `alertLevel`, `alertEffectiveIval` (minutes), `schedule`
+  (seconds), `alertSubjectTemplate`, `alertBodyTemplate` and `suppressDuplicatesES`, with no integer
+  `type`. Which shape import accepts is not yet confirmed.
+- **Script EventSource duplicates:** LM's docs give no per-event option, saying only that
+  suppression is "controlled by the alerts per host", and do not define that. LM's own Cisco DNAC
+  EventSource dedupes in its script. Exceeding the EventSource limits pauses processing for a minute
+  "without notification" and can drop events, so do not treat an emitted event as a delivered alert.
 - **ConfigSource** — DataSource-like: `"dataSourceType": 2`, `collectionMethod`, `collectionInterval`,
   `collectionAttrs`, `multiInstance`, `activeDiscovery` (same rules: never Delete Immediately, auto-delete decided per module with `autoDeleteInstances` read inverted on import (module-export-schema.md §3),
   `discoveryInterval` one of `0m`/`15m`/`60m`/`1440m`), `fileFormat` (`arbitrary`, `json`, …) and

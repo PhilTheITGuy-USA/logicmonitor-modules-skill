@@ -41,6 +41,8 @@ SECRET_WORDS = re.compile(r"(token|secret|pass(word)?|api[._-]?key|apikey|\.key$
 BUILTIN_CREDENTIAL_PROPERTIES = {
     "ssh.pass", "ssh.cert.pass", "ssh.publickey.pass", "config.pass", "wmi.pass",
     "jdbc.pass", "jmx.pass", "esx.pass", "snmp.authtoken", "snmp.privtoken",
+    # lm.api reads this name, and the NetScan screen masks it [portal, 2026-10-26].
+    "lmaccess.key",
 }
 PROPERTY_LITERAL = re.compile(r"""['"]([a-z][\w-]*(?:\.[\w-]+)+)['"]""")
 # PowerShell reads properties as ##name## tokens substituted before the script runs.
@@ -132,6 +134,11 @@ def normalise(raw: dict, report: Report) -> dict:
 
 
 def kind_of(module: dict) -> str | None:
+    # The portal gives a Script EventSource no integer type: GET and format=file both return
+    # `collector` and `groovyScript` [portal, 2026-11-05]. Unrecognised, it was skipped as
+    # non-module JSON, which reads as a clean lint.
+    if module.get("collector") == "scriptevent":
+        return "eventsource"
     if isinstance(module.get("type"), int) and module["type"] in MODULE_TYPES:
         return MODULE_TYPES[module["type"]]
     if "propertySourceType" in module or ("script" in module and "datapoints" not in module):
@@ -157,6 +164,8 @@ def scripts_of(module: dict) -> dict[str, tuple[str, str]]:
     ad = ((module.get("activeDiscovery") or {}).get("params") or {})
     if isinstance(ad, dict) and ad.get("content"):
         out["discovery"] = ((ad.get("type") or "groovy").lower(), ad["content"])
+    if isinstance(module.get("groovyScript"), str):
+        out["collect"] = ("groovy", module["groovyScript"])
     script = module.get("script")
     if isinstance(script, dict):
         out["script"] = ((script.get("type") or "groovy").lower(), script.get("content", "") or "")
@@ -170,7 +179,7 @@ def scripts_of(module: dict) -> dict[str, tuple[str, str]]:
 # collectionAttrs is a script container (a JSON string on a TopologySource), and every other
 # script sits inside an object, so only top-level metadata strings are measured.
 MAX_FIELD_CHARS = 4096
-SCRIPT_FIELDS = {"collectionAttrs"}
+SCRIPT_FIELDS = {"collectionAttrs", "groovyScript"}
 
 
 def check_common(module: dict, report: Report) -> None:

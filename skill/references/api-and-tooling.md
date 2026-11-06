@@ -29,7 +29,9 @@ def lm_request(portal, access_id, access_key, method, path, body="", params=None
 ```
 
 - List endpoints paginate with `size` (max typically 1000) and `offset`; filter with
-  `filter=name:"Foo"` style expressions **[LM docs]**.
+  `filter=name:"Foo"` style expressions **[LM docs]**. `/alert/alerts` reports a **negative
+  `total`** (-3, -4 seen), so page until a short page **[portal, 2026-11-05]**. It needs
+  `cleared:"*"` to include cleared alerts, and `alertValue` holds an event alert's full text.
 
 ## Module import API
 

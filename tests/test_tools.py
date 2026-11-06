@@ -242,6 +242,13 @@ def other_module(kind: int, **extra) -> dict:
     return m
 
 
+def rest_eventsource(body: str) -> dict:
+    """A Script EventSource as the portal returns it from GET /setting/eventsources/{id}."""
+    return {"name": "Vendor_Events", "collector": "scriptevent", "appliesTo": "vendor.id",
+            "description": "x", "technology": "x", "alertLevel": "warn", "alertEffectiveIval": 60,
+            "scriptType": "embed", "schedule": 900, "groovyScript": "//!/lib-groovy/v4\n" + body}
+
+
 def other_module_mutations() -> dict[str, dict]:
     nodes = load(NODES)
     groovy = {"type": "groovy", "content": "//!/lib-groovy/v4\nprintln 'x'\nreturn 0\n"}
@@ -262,6 +269,8 @@ def other_module_mutations() -> dict[str, dict]:
     x["collectionAttrs"] = {"type": "powershell",
                             "content": "$secret = '##vendor.api.password##'\nWrite-Output 'x'\nexit 0\n"}
     m["PowerShell token for a secret without .credential"] = x
+    m["portal-shape EventSource reading a secret without .credential"] = rest_eventsource(
+        "def secret = hostProps.get('vendor.api.password')\nreturn 0\n")
     m["DiagnosticSource script not an object"] = other_module(11, script="println 'x'")
     m["ConfigSource deletes instances immediately"] = other_module(
         6, collectionMethod="script", multiInstance=True, collectionAttrs=groovy,
@@ -279,6 +288,10 @@ def module_must_pass() -> dict[str, dict]:
     x["collectionAttrs"]["content"] += "\ndef sshPass = hostProps.get('ssh.pass')\n"
     m["LM built-in credential property ssh.pass"] = x
     m["minimal DiagnosticSource"] = other_module(11, script=groovy)
+    m["portal-shape EventSource script over 4096 characters"] = rest_eventsource(
+        "// padding " + "x" * 5000 + chr(10) + "return 0" + chr(10))
+    m["portal-shape EventSource reading lmaccess.key"] = rest_eventsource(
+        "def key = hostProps.get('lmaccess.key')\nreturn 0\n")
     x = copy.deepcopy(load(TOPOLOGY)); x["technicalNotes"] = "x" * 4096
     m["technicalNotes of exactly 4096 characters"] = x
     x = copy.deepcopy(nodes)
