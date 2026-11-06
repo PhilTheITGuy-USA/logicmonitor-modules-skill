@@ -96,6 +96,12 @@ observed in a portal here.
   2026-11-04]** (Proxmox v2 `StartAtBootNotRunning`, 3-minute polls: over at 12:06, 12:09 and
   12:12, alert at 12:12). Size it as `N - 1` for "N polls in a row", and say the time in the
   alert docs from the first bad poll. `clearInterval` `0` cleared on the first good poll.
+- A value moving **up** a severity band restarts that count [LogicMonitor's Datapoint Overview,
+  *Alert Trigger Interval*], and so does No Data. So a noisy value crossing the upper line can
+  stay silent however long it lasts **[portal, 2026-11-05]** (`> 5 15` with `triggerInterval` 2:
+  8.36, 21.37, 11.57, 20.24, 18.14 over 25 minutes, no alert). For a noisy gauge, use one level.
+  An open alert does follow a value down: an error ended and a warning opened on the same poll,
+  with no wait.
 - `alertBody` tokens: `##INSTANCE##`, `##VALUE##`, `##START##`, `##DURATION##`, `##HOST##`,
   `##DATAPOINT##` **[LM convention]**. Say what's wrong *and* what it breaks.
   `##DSIDESCRIPTION##` renders the **instance's description** -- the fourth field of an AD line --
