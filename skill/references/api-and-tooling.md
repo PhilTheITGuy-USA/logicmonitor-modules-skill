@@ -32,6 +32,9 @@ def lm_request(portal, access_id, access_key, method, path, body="", params=None
   `filter=name:"Foo"` style expressions **[LM docs]**. `/alert/alerts` reports a **negative
   `total`** (-3, -4 seen), so page until a short page **[portal, 2026-11-05]**. It needs
   `cleared:"*"` to include cleared alerts, and `alertValue` holds an event alert's full text.
+  **A filter on a field the endpoint does not support can be ignored silently:** `monitorObjectId`
+  on `/alert/alerts` returned the same alerts for a resource that does not exist. Test a filter
+  with a value that must match nothing before relying on it **[portal, 2026-11-05]**.
 
 ## Module import API
 
