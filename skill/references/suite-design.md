@@ -258,6 +258,14 @@ has no address (Proxmox ships no VIP).
     **[portal, 2026-10-26]**;
   - a Dry Run reports counts (Scanned / Found / Added) and fills in over a minute or two,
     duplicates first, so a first look under-counts;
+  - **a Dry Run looks like a real run in the API [portal, 2026-11-05]:** its execution has
+    `status: finished`, `progress.added` above 0 and devices with `status: added`, though nothing
+    was added. Its `scanId` contains `-dry-run-` and its device log reads "Device will be added",
+    not "Device added". `repeats` shows the NetScan's schedule, not how a run started;
+  - **`/setting/netscans/{id}/executions/{execId}/devices` is the record of what a run did
+    [portal, 2026-11-05]:** each row has `ip`, `dns` and `status` (`added`, `updated`, `already
+    monitored`), it takes `filter=status:"added"`, and it still lists a device since deleted. It
+    has no display name;
   - a resource deleted and then re-emitted comes back **with its old properties and categories**
     from Recently Deleted. To start clean, purge it from Recently Deleted too.
   - **a re-run overwrites and adds, but never removes.** A changed property value is rewritten

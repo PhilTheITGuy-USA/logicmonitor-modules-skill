@@ -29,7 +29,19 @@ def lm_request(portal, access_id, access_key, method, path, body="", params=None
 ```
 
 - List endpoints paginate with `size` (max typically 1000) and `offset`; filter with
-  `filter=name:"Foo"` style expressions **[LM docs]**.
+  `filter=name:"Foo"` style expressions **[LM docs]**. `/alert/alerts` reports a **negative
+  `total`** (-3, -4 seen), so page until a short page **[portal, 2026-11-05]**. It needs
+  `cleared:"*"` to include cleared alerts, and `alertValue` holds an event alert's full text.
+  **A filter on a field the endpoint does not support can be ignored silently:** `monitorObjectId`
+  on `/alert/alerts` returned the same alerts for a resource that does not exist. Test a filter
+  with a value that must match nothing before relying on it **[portal, 2026-11-05]**.
+- **Alert routing [portal, 2026-11-05]:** an alert rule's `datasource` matches a DataSource's
+  **display name**; the module name falls through to the next rule with no error. An alert's
+  `resourceTemplateName` is that display name too, and `receivedList` shows whether it was delivered.
+  A chain stage for an integration is `{"type": "ADMIN", "method": "<integration name>", "addr":
+  "<recipient>"}`. A Custom Email Delivery sender is `noreply+api.alerter@##COMPANY##.logicmonitor.com`,
+  and a new recipient must verify by email, even an existing portal user.
+- `GET /setting/netscans/{id}/executenow` starts a run; POST is refused **[portal, 2026-11-05]**.
 
 ## Module import API
 
