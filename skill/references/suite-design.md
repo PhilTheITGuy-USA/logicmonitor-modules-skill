@@ -262,6 +262,8 @@ has no address (Proxmox ships no VIP).
     `status: finished`, `progress.added` above 0 and devices with `status: added`, though nothing
     was added. Its `scanId` contains `-dry-run-` and its device log reads "Device will be added",
     not "Device added". `repeats` shows the NetScan's schedule, not how a run started;
+  - **a run still going has `endEpoch` 9223372036854775807** and `status` `scheduled`, then
+    `detectProps`, so `endEpoch > 0` does not mean it ended **[portal, 2026-11-05]**;
   - **`/setting/netscans/{id}/executions/{execId}/devices` is the record of what a run did
     [portal, 2026-11-05]:** each row has `ip`, `dns` and `status` (`added`, `updated`, `already
     monitored`), it takes `filter=status:"added"`, and it still lists a device since deleted. It
