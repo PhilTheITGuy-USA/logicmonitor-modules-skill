@@ -454,6 +454,11 @@ def check_datasource(module: dict, scripts: dict[str, tuple[str, str]], report: 
                         f"'<op> warn [error [critical]]'")
         if threshold and not (dp.get("alertBody") or "").strip():
             report.warn(f"datapoint {dp_name!r} alerts but has no alertBody")
+        levels = (dp.get("threshold") or "").split()[1:]
+        if len(set(levels)) > 1 and int(dp.get("triggerInterval") or 0) > 0:
+            report.warn(f"datapoint {dp_name!r} has two threshold levels and a trigger interval: "
+                        f"a value moving up a band restarts the consecutive-poll count, so a "
+                        f"noisy value crossing the upper line may never alert; one level avoids it")
         check_status_display_names(dp_name, dp, report)
 
     for dup in sorted({n for n in names if names.count(n) > 1}):

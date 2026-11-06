@@ -338,6 +338,11 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(load(NODES))
     x["activeDiscovery"].update(groupMethod="ilp", groupExpr="pve_node")
     m["ilp groupExpr without the auto. prefix"] = (x, "auto.pve_node")
+    # A move up a band restarts the count, so a value crossing the upper line never alerts
+    # [portal, 2026-11-05].
+    x = copy.deepcopy(load(NODES)); dp = x["datapoints"][0]
+    dp.update(threshold="> 5 15", triggerInterval=2)
+    m["two levels with a trigger interval"] = (x, "restarts the consecutive-poll count")
     x = copy.deepcopy(load(NODES)); dp = x["datapoints"][0]
     dp["statusDisplayNames"] = copy.deepcopy(STATUS_NAMES)
     dp["alertBody"] = "Proxmox node ##INSTANCE## is offline."
