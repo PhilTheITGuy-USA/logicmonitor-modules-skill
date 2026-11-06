@@ -58,7 +58,12 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   differently [portal, 2026-11-05]:** REST and `?format=file` both return `collector: scriptevent`,
   `groovyScript`, `scriptType: embed`, `alertLevel`, `alertEffectiveIval` (minutes), `schedule`
   (seconds), `alertSubjectTemplate`, `alertBodyTemplate` and `suppressDuplicatesES`, with no integer
-  `type`. Which shape import accepts is not yet confirmed.
+  `type`. **Create a Script EventSource with `POST /setting/eventsources` in that shape, not with
+  `importjson` [portal, 2026-11-05]:** the REST shape fails import with `JSONObject["type"] not
+  found` (with `type` added, "JSON could not be read into LogicModule"), and LM's template shape
+  above fails with "Non-empty field value required", twice, naming no field. The POST kept
+  `schedule` and `suppressDuplicatesES: false`, which the template shape cannot express, and it
+  worked with a token holding only `readonly` and `Module Importer`.
 - **Script EventSource duplicates:** LM's docs give no per-event option, saying only that
   suppression is "controlled by the alerts per host", and do not define that. LM's own Cisco DNAC
   EventSource dedupes in its script. Exceeding the EventSource limits pauses processing for a minute
