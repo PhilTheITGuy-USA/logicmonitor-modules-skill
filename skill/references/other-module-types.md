@@ -68,6 +68,14 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   suppression is "controlled by the alerts per host", and do not define that. LM's own Cisco DNAC
   EventSource dedupes in its script. Exceeding the EventSource limits pauses processing for a minute
   "without notification" and can drop events, so do not treat an emitted event as a delivered alert.
+- **Date a Script event when it is reported, not when its subject happened [portal, 2026-11-05]:** an
+  event whose `happenedOn` is older than the clear time raises an alert already cleared, with
+  `endEpoch` = `startEpoch` + clear time and an empty `receivedList`, so nobody is notified.
+- **Script event alert text [portal, 2026-11-05]:** `alertValue` and `##VALUE##` hold the event as
+  `Source:`, `happenedOn:`, `message:` and `severity:` lines. In a module's own `alertBody`, `##MESSAGE##`
+  is the event message. In Custom Email Delivery, `##MESSAGE##` is the rendered alert (an `LME<id>
+  <subject>` line, that body, then Alert Rule and Recipients lines), `##SOURCE##` is the EventSource's
+  name, not the event's `Source`, and `##ALERTBODY##` and `##EVENTMESSAGE##` are blank.
 - **ConfigSource** — DataSource-like: `"dataSourceType": 2`, `collectionMethod`, `collectionInterval`,
   `collectionAttrs`, `multiInstance`, `activeDiscovery` (same rules: never Delete Immediately, auto-delete decided per module with `autoDeleteInstances` read inverted on import (module-export-schema.md §3),
   `discoveryInterval` one of `0m`/`15m`/`60m`/`1440m`), `fileFormat` (`arbitrary`, `json`, …) and
