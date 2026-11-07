@@ -40,7 +40,12 @@ def lm_request(portal, access_id, access_key, method, path, body="", params=None
   `resourceTemplateName` is that display name too, and `receivedList` shows whether it was delivered.
   A chain stage for an integration is `{"type": "ADMIN", "method": "<integration name>", "addr":
   "<recipient>"}`. A Custom Email Delivery sender is `noreply+api.alerter@##COMPANY##.logicmonitor.com`,
-  and a new recipient must verify by email, even an existing portal user.
+  and a new recipient must verify by email, even an existing portal user. `POST /setting/integrations`
+  with `type: "email"` takes `name`, `description`, `sender`, `receivers`, `subject` and `body`; an
+  unknown field (`dataFormat`) fails with HTTP 500 and "Please check your parameters!", which reads
+  like a permissions fault but is not. The response's `extra` gives each recipient's state
+  (`{<address>=verified}`); an address verified before stayed verified on a new integration
+  **[portal, 2026-11-06]**.
 - `GET /setting/netscans/{id}/executenow` starts a run; POST is refused **[portal, 2026-11-05]**.
 
 ## Module import API
