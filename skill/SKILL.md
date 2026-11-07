@@ -44,7 +44,9 @@ Read these before writing any module. Each one shipped broken at least once.
    LogicMonitor as No Data. Map or convert before printing.
 5. **Withhold, don't fabricate.** If the source genuinely has no value (feature not configured,
    attribute unreadable), print nothing for that datapoint so it reads No Data. A `0` that means
-   "unknown" alerts like a real failure, or hides one.
+   "unknown" alerts like a real failure, or hides one. The exception: a thresholded datapoint whose
+   condition can stop applying while its alert is open needs a named value outside the threshold,
+   because a withheld value leaves that alert open indefinitely.
 6. **Secrets end in `.credential`** (e.g. `vendor.api.token.credential`). That suffix is what makes the
    portal mask the value. Renaming a property later breaks every existing deployment quietly — the
    module stops applying rather than erroring — so pick the name once.

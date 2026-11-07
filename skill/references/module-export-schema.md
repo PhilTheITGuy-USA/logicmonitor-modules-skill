@@ -124,6 +124,18 @@ observed in a portal here.
   Discovery recreated them (same wildvalue, new instance, history lost). When a release stops
   printing a thresholded datapoint for some instances, say in its upgrade notes that alerts
   already open stay open and how to clear them.
+  The same happens at run time **[portal, 2026-11-06]**. Proxmox v2's `HAFencingArmed` was withheld
+  when a cluster had no HA services; its alert opened, HA was then removed, and the alert stayed
+  open for over 40 minutes of No Data. Printing `2` ("Not checked", outside the `< 1` threshold)
+  cleared it on the first poll. So when the condition a thresholded datapoint watches can stop
+  applying while an alert is open, print a named value outside the threshold. Withhold only when
+  there was never anything to read.
+- **A rescheduled poll can delay an alert by one poll** **[portal, 2026-11-06]**. With
+  `triggerInterval` 2 and a 5-minute poll, an alert opened on the third poll in one run and on the
+  fourth in two: once just after the module was imported, and once when every module on the
+  Collector shifted its poll times with no import (one poll came 4 minutes 9 seconds after the
+  last). What set off that shift is not known. A new datapoint also reads No Data until the
+  Collector picks up the module, a few minutes. Allow for both when timing a lab test.
 - **Status datapoints** — give the codes names so alerts read as words **[LM recipes; portal-confirmed
   2026-10-27]** (Proxmox v2: imported, shown on the datapoint, and an alert on a stopped guest
   read "Not running (0)"; only `"operator": "EQ"` has been seen):
