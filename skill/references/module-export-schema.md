@@ -130,6 +130,10 @@ observed in a portal here.
   cleared it on the first poll. So when the condition a thresholded datapoint watches can stop
   applying while an alert is open, print a named value outside the threshold. Withhold only when
   there was never anything to read.
+- **Removing a threshold clears the alert it raised** **[portal, 2026-11-06]**, unlike a datapoint that
+  stops reporting. Proxmox v2 imported a `HealthScore` with no threshold while its error was open and
+  the value was still below the old line: the alert closed one second after the import, before any
+  new poll. So a release can drop an alert without leaving one stuck.
 - **A rescheduled poll can delay an alert by one poll** **[portal, 2026-11-06]**. With
   `triggerInterval` 2 and a 5-minute poll, an alert opened on the third poll in one run and on the
   fourth in two: once just after the module was imported, and once when every module on the
