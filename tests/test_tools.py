@@ -343,6 +343,10 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     x = copy.deepcopy(load(NODES)); dp = x["datapoints"][0]
     dp.update(threshold="> 5 15", triggerInterval=2)
     m["two levels with a trigger interval"] = (x, "restarts the consecutive-poll count")
+    # The portal UI refuses the REST shape with "Invalid Value" and takes the XML export
+    # [portal, 2026-11-12].
+    m["REST-shape EventSource handed to an importer"] = (
+        rest_eventsource("return 0\n"), "format=xml")
     x = copy.deepcopy(load(NODES)); dp = x["datapoints"][0]
     dp["statusDisplayNames"] = copy.deepcopy(STATUS_NAMES)
     dp["alertBody"] = "Proxmox node ##INSTANCE## is offline."

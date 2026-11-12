@@ -64,6 +64,17 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   above fails with "Non-empty field value required", twice, naming no field. The POST kept
   `schedule` and `suppressDuplicatesES: false`, which the template shape cannot express, and it
   worked with a token holding only `readonly` and `Module Importer`.
+- **For a UI import, ship a Script EventSource as XML [portal, 2026-11-12]:** the portal UI's
+  import (Modules > My Module Toolbox > Add, from a file) refuses the REST-shape `.json` with
+  "Invalid Value", and imports the shape `GET /setting/eventsources/{id}?format=xml` returns:
+  `<feed><entry type="preeventsource">` with lower-case tags (`alertlevel` `2` for warn,
+  `appliesto`, `collector` `scriptevent`, `alertsubjecttemplate`, `alertbodytemplate`,
+  `alerteffectiveival`, `clearafterack`, `suppressduplicates`, `suppressduplicateses`, `tags`,
+  `technology`, `doMapping`, `schemaVersion` `3`), and the script as `<params>` of
+  `<preeventsourceparam>` name/value/comment entries: `scripttype` `embed`, `scriptgroovy`,
+  `windowsscript`, `linuxscript`, `windowscmdline`, `linuxcmdline`, `schedule` (seconds). Over an
+  existing EventSource of that name it updated in place, keeping its id. Generate it from a portal
+  export, escape the script as XML text, and check it parses back to the same script.
 - **Script EventSource duplicates:** LM's docs give no per-event option, saying only that
   suppression is "controlled by the alerts per host", and do not define that. LM's own Cisco DNAC
   EventSource dedupes in its script. Exceeding the EventSource limits pauses processing for a minute

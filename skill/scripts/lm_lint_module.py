@@ -735,6 +735,13 @@ def check_shared_only(kind: str, module: dict, scripts: dict[str, tuple[str, str
     report.warn(f"{kind}: only the shared checks run on this module type (secrets, snippets, "
                 f"exits, discovery); its JSON shape is from LM's monitoring-recipes templates, "
                 f"not a portal import -- confirm by importing and exporting it")
+    # The REST shape goes in only by POST /setting/eventsources. importjson refuses it
+    # [portal, 2026-11-05], and so does the portal UI's import, with "Invalid Value"
+    # [portal, 2026-11-12]; the UI took the ?format=xml export shape.
+    if kind == "eventsource" and module.get("collector") == "scriptevent":
+        report.warn("REST-shape Script EventSource: only POST/PUT /setting/eventsources takes it. "
+                    "importjson and the portal UI's import refuse it (UI: \"Invalid Value\"); "
+                    "for a UI import, ship the GET /setting/eventsources/{id}?format=xml shape")
     if module.get("activeDiscovery"):
         check_active_discovery(module, report)
     if kind in ("diagnosticsource", "remediationsource") and not isinstance(
