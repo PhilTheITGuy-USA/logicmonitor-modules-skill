@@ -111,10 +111,16 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   **`registryMetadata` is required [portal, 2026-11-13]:** one change at a time from a clone's
   export, dropping it made the portal UI refuse the import with "Invalid File, cannot import into
   LogicModule", code 1500, while dropping `originId`, `version` or `integrationMetadata`, emptying
-  AppliesTo or renaming the module were each accepted. Its `originalUuid` and `locatorId` name
-  the core `Windows Event Logs` (`9Q5RGnfCRJKNkAig1ZUUOw`, `333ZP6`, as in `integrationMetadata`);
-  `currentUuid`, `authorCompanyUuid` and `checksum` are specific to the exporting portal -- keep
-  them out of a public file. The lint errors on a `wineventlog` LogSource without the block. **The
+  AppliesTo or renaming the module were each accepted. **Ship it as `"registryMetadata": {}`**:
+  the empty object imported, and so did blanking `authorCompanyUuid`, blanking or replacing
+  `currentUuid`/`originalUuid`; every one created a new module, and one carrying an existing
+  module's `currentUuid` under a new name did not touch that module [portal, 2026-11-13]. A full
+  block is portal-specific: a module built in the editor exports `currentUuid` = `originalUuid`
+  (its own id), `locatorId` `""`, `checksum` `""`, `isChangedFromOrigin` `false`, no
+  `integrationMetadata`, and the portal's `authorCompanyUuid`; a clone of the core `Windows Event
+  Logs` exports `originalUuid` `9Q5RGnfCRJKNkAig1ZUUOw`, `locatorId` `333ZP6` and
+  `isChangedFromOrigin` `true`, claiming LM's core module as its origin. Keep both out of a public
+  file. The lint errors on a `wineventlog` LogSource without the block. **The
   LogSource editor offers [portal UI, 2026-11-13]:** filter `op` `Equal`, `NotEqual`, `In`,
   `NotIn`, `RegexMatch`, `RegexNotMatch`; filter `name` `Level`, `LogName`, `Message`,
   `SourceName`, `EventId`; Include/Exclude (`include` `y`/`n`); and an AND/OR choice

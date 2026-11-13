@@ -764,7 +764,7 @@ def check_shared_only(kind: str, module: dict, scripts: dict[str, tuple[str, str
             and not isinstance(module.get("registryMetadata"), dict)):
         report.error("wineventlog LogSource has no registryMetadata -- the portal refuses the "
                      "import (\"Invalid File, cannot import into LogicModule\", code 1500); "
-                     "copy the block from a portal export of a Windows Event Logs clone")
+                     "ship \"registryMetadata\": {} -- an exported block is portal-specific")
     if kind == "logsource" and not module.get("resourceMapping"):
         report.warn("LogSource has no resourceMapping -- logs it imports are not tied to the "
                     "monitored resource (map system.deviceId)")

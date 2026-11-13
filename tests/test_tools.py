@@ -233,11 +233,9 @@ SNIPPET_BOOTSTRAP_UNBOUND = (
     "def emit = modLoader.load('lm.emit', '0')\n")
 
 
-# registryMetadata of a Windows Event Logs clone, portal-specific fields blanked. Without the
-# block, the portal UI refuses a wineventlog LogSource with code 1500 [portal, 2026-11-13].
-WINEVENT_REGISTRY = {"currentUuid": "", "originalUuid": "9Q5RGnfCRJKNkAig1ZUUOw", "locatorId": "333ZP6",
-                     "authorCompanyUuid": "", "registryVersion": "1.0.0", "checksum": "",
-                     "namespace": "", "registryId": "", "isChangedFromOrigin": True, "status": ""}
+# Without registryMetadata the portal UI refuses a wineventlog LogSource with code 1500; the
+# empty object imports [portal, 2026-11-13].
+WINEVENT_REGISTRY = {}
 
 
 def other_module(kind: int, **extra) -> dict:
