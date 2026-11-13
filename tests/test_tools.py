@@ -271,6 +271,8 @@ def other_module_mutations() -> dict[str, dict]:
     m["PowerShell token for a secret without .credential"] = x
     m["portal-shape EventSource reading a secret without .credential"] = rest_eventsource(
         "def secret = hostProps.get('vendor.api.password')\nreturn 0\n")
+    x = copy.deepcopy(nodes); x["appliesTo"] = ""
+    m["DataSource with an empty AppliesTo"] = x
     m["DiagnosticSource script not an object"] = other_module(11, script="println 'x'")
     m["script LogSource with no script"] = other_module(
         10, collectionMethod="script", collectionAttrs={"type": "groovy", "content": ""},
@@ -332,6 +334,12 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     assert ERI_CALL in x["script"]["content"], "addERI fixture no longer carries " + ERI_CALL
     x["script"]["content"] = x["script"]["content"].replace(
         ERI_CALL, "emitEri('virt.x', 1, keys, 'VirtualMachineResource'")
+    # A LogSource may ship opt-in, AppliesTo empty, so it ingests nothing until the user
+    # points it at resources (user, 2026-11-13).
+    m["LogSource shipped with an empty AppliesTo"] = (other_module(
+        10, appliesTo="", collectionMethod="wineventlog", collectionInterval=60,
+        resourceMapping=[{"index": "0", "method": "Token", "comment": "",
+                          "value": "##system.deviceId##", "key": "system.deviceId"}]), "opt-in")
     # The ERT comes from the highest-priority ERI entry across all categories [portal]:
     # at priority 1 the built-in net.l2 entry (priority 2) keeps PhysicalServer.
     m["ERI type override below priority 3"] = (x, "priority")

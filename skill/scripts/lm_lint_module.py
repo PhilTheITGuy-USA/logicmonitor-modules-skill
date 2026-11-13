@@ -195,7 +195,13 @@ def check_common(module: dict, report: Report) -> None:
     if not (module.get("description") or "").strip():
         report.warn("no description")
     if not (module.get("appliesTo") or "").strip():
-        report.error("empty appliesTo -- the module will apply to nothing")
+        if kind_of(module) == "logsource":
+            # Shipping a LogSource opt-in is a choice: it ingests nothing until pointed at
+            # resources (user, 2026-11-13).
+            report.warn("empty appliesTo -- an opt-in LogSource ingests nothing until the user "
+                        "sets it; say in technicalNotes what to set")
+        else:
+            report.error("empty appliesTo -- the module will apply to nothing")
     texts = [("technicalNotes", module.get("technicalNotes") or "")]
     for dp in module.get("datapoints") or []:
         for field in ("description", "alertBody"):

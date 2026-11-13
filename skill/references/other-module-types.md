@@ -110,10 +110,12 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   "index": "0", "comment", "value": "##system.deviceId##", "key": "system.deviceId"}`. **A file
   without `searchKeywords`, `group` and the filter/mapping `comment` was refused by the portal UI
   with "Invalid File, cannot import into LogicModule", code 1500 [portal, 2026-11-13]**; which
-  difference caused it is not yet isolated, so copy every key, empty ones included. The export
-  shows only `op` `Equal`, `name` `EventId` and `filterOp` `OR`: `op` `In` (pipe-separated), filter
-  names `LogName`/`Level`, `filterOp` `AND` and a `Static` log-field method are [inferred] from LM's
-  docs until a round trip keeps them. The stock module excludes `Level` Security Audit Success, so it drops every successful
+  difference caused it is not yet isolated, so copy every key, empty ones included. **The
+  LogSource editor offers [portal UI, 2026-11-13]:** filter `op` `Equal`, `NotEqual`, `In`,
+  `NotIn`, `RegexMatch`, `RegexNotMatch`; filter `name` `Level`, `LogName`, `Message`,
+  `SourceName`, `EventId`; Include/Exclude (`include` `y`/`n`); and an AND/OR choice
+  (`filterOp`). The `In` value separator (pipe assumed) and a `Static` log-field method are
+  [inferred] until a round trip and a live target confirm them. The stock module excludes `Level` Security Audit Success, so it drops every successful
   audit event (group, user and policy changes): ingest those with a separate LogSource. The linter
   does not ask a non-script LogSource for a script.
 
