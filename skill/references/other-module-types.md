@@ -124,8 +124,10 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   LogSource editor offers [portal UI, 2026-11-13]:** filter `op` `Equal`, `NotEqual`, `In`,
   `NotIn`, `RegexMatch`, `RegexNotMatch`; filter `name` `Level`, `LogName`, `Message`,
   `SourceName`, `EventId`; Include/Exclude (`include` `y`/`n`); and an AND/OR choice
-  (`filterOp`). The `In` value separator (pipe assumed) and a `Static` log-field method are
-  [inferred] until a round trip and a live target confirm them. The stock module excludes `Level` Security Audit Success, so it drops every successful
+  (`filterOp`). An `In` filter with a pipe-separated value, a `LogName` filter, `filterOp` `AND`
+  and a `{"method": "Static", "value": "<text>", "key": "<field>"}` log field survive an import
+  and export unchanged [portal, 2026-11-13]; that the Collector reads `|` as the `In` separator
+  and stamps the static field is [inferred] until a live target shows it. The stock module excludes `Level` Security Audit Success, so it drops every successful
   audit event (group, user and policy changes): ingest those with a separate LogSource. The linter
   does not ask a non-script LogSource for a script.
 
