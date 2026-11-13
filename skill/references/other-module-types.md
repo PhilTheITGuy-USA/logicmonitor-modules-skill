@@ -126,8 +126,10 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   `SourceName`, `EventId`; Include/Exclude (`include` `y`/`n`); and an AND/OR choice
   (`filterOp`). An `In` filter with a pipe-separated value, a `LogName` filter, `filterOp` `AND`
   and a `{"method": "Static", "value": "<text>", "key": "<field>"}` log field survive an import
-  and export unchanged [portal, 2026-11-13]; that the Collector reads `|` as the `In` separator
-  and stamps the static field is [inferred] until a live target shows it. The stock module excludes `Level` Security Audit Success, so it drops every successful
+  and export unchanged [portal, 2026-11-13], and work on a live domain controller [live target,
+  2026-11-13]: `LogName` `Equal` `Security` AND `EventId` `In` 16 pipe-separated IDs let in only
+  those events, each mapped to the DC by `system.deviceId` and carrying the static field. A
+  Security-log LogSource like this one works alongside the stock module. The stock module excludes `Level` Security Audit Success, so it drops every successful
   audit event (group, user and policy changes): ingest those with a separate LogSource. The linter
   does not ask a non-script LogSource for a script.
 
