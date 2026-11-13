@@ -272,6 +272,10 @@ def other_module_mutations() -> dict[str, dict]:
     m["portal-shape EventSource reading a secret without .credential"] = rest_eventsource(
         "def secret = hostProps.get('vendor.api.password')\nreturn 0\n")
     m["DiagnosticSource script not an object"] = other_module(11, script="println 'x'")
+    m["script LogSource with no script"] = other_module(
+        10, collectionMethod="script", collectionAttrs={"type": "groovy", "content": ""},
+        resourceMapping=[{"index": "0", "method": "Token", "value": "##system.deviceId##",
+                          "key": "system.deviceId"}])
     m["ConfigSource deletes instances immediately"] = other_module(
         6, collectionMethod="script", multiInstance=True, collectionAttrs=groovy,
         activeDiscovery={"discoveryMethod": "ad_script", "discoveryInterval": "60m",
@@ -288,6 +292,13 @@ def module_must_pass() -> dict[str, dict]:
     x["collectionAttrs"]["content"] += "\ndef sshPass = hostProps.get('ssh.pass')\n"
     m["LM built-in credential property ssh.pass"] = x
     m["minimal DiagnosticSource"] = other_module(11, script=groovy)
+    # A wineventlog LogSource carries filters, not a script [LM's Windows Event Logs export].
+    m["wineventlog LogSource with no script"] = other_module(
+        10, collectionMethod="wineventlog", collectionInterval=60,
+        collectionAttrs={"resourceMappingOp": "OR", "useWrittenTime": False, "filterOp": "AND"},
+        filters=[{"op": "Equal", "include": "y", "name": "LogName", "index": "1", "value": "Security"}],
+        resourceMapping=[{"index": "0", "method": "Token", "value": "##system.deviceId##",
+                          "key": "system.deviceId"}])
     m["portal-shape EventSource script over 4096 characters"] = rest_eventsource(
         "// padding " + "x" * 5000 + chr(10) + "return 0" + chr(10))
     m["portal-shape EventSource reading lmaccess.key"] = rest_eventsource(

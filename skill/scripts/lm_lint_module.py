@@ -211,6 +211,10 @@ def check_scripts(module: dict, scripts: dict[str, tuple[str, str]], kind: str,
                   report: Report) -> None:
     combined = "\n".join(text for _, text in scripts.values())
     if not combined.strip():
+        # A LogSource that is not script-collected (wineventlog, ...) carries filters and
+        # log fields, never a script [LM's Windows Event Logs export].
+        if kind == "logsource" and module.get("collectionMethod") not in (None, "script"):
+            return
         report.error("no embedded script found")
         return
     groovy = {slot: text for slot, (lang, text) in scripts.items() if lang == "groovy"}

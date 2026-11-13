@@ -99,6 +99,15 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   keep the `system.deviceId` mapping (`{"key": "system.deviceId", "method": "literal", "value":
   "##system.deviceId##"}`) or imported logs aren't tied to the resource. The linter warns when it is
   missing.
+- **`wineventlog` LogSource** [from LM's `Windows Event Logs` export] — no script: `"type": 10`,
+  `"collectionMethod": "wineventlog"`, `"collectionInterval": 60`, `"collectionAttrs":
+  {"resourceMappingOp": "OR", "useWrittenTime": false, "filterOp": "AND"}`, `filters` of
+  `{"op", "include": "y"|"n", "name", "index": "1".., "value"}` (`op` `Equal`, or `In` with a
+  pipe-separated value; names such as `LogName`, `EventId`, `Level`), `logFields` of
+  `{"method": "Attribute"|"Token", "comment", "value", "key"}`, and a `resourceMapping` with method
+  `Token`. The stock module excludes `Level` Security Audit Success, so it drops every successful
+  audit event (group, user and policy changes): ingest those with a separate LogSource. The linter
+  does not ask a non-script LogSource for a script.
 
 ## Diagnostic and Remediation runs
 
