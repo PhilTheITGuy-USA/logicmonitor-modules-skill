@@ -103,14 +103,18 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   2026-11-13] — no script. Top-level keys: `name`, `description`, `appliesTo`, `technicalNotes`,
   `searchKeywords` (`""`), `group` (`""`), `"type": 10`, `"collectionMethod": "wineventlog"`,
   `"collectionInterval": 60`, `"collectionAttrs": {"resourceMappingOp": "OR", "useWrittenTime":
-  false, "filterOp": "OR"}`, `filters`, `logFields`, `resourceMapping`, plus the portal-owned
-  `version`, `registryMetadata`, `integrationMetadata` and per-entry `originId`. Filters are
+  false, "filterOp": "OR"}`, `filters`, `logFields`, `resourceMapping`, `registryMetadata`, plus
+  the optional `version`, `integrationMetadata` and per-entry `originId`. Filters are
   `{"op", "include": "y"|"n", "name", "index": "1".., "comment", "value"}`; logFields
   `{"method": "Attribute"|"Token", "comment", "value", "key"}`; resourceMapping `{"method": "Token",
-  "index": "0", "comment", "value": "##system.deviceId##", "key": "system.deviceId"}`. **A file
-  without `searchKeywords`, `group` and the filter/mapping `comment` was refused by the portal UI
-  with "Invalid File, cannot import into LogicModule", code 1500 [portal, 2026-11-13]**; which
-  difference caused it is not yet isolated, so copy every key, empty ones included. **The
+  "index": "0", "comment", "value": "##system.deviceId##", "key": "system.deviceId"}`.
+  **`registryMetadata` is required [portal, 2026-11-13]:** one change at a time from a clone's
+  export, dropping it made the portal UI refuse the import with "Invalid File, cannot import into
+  LogicModule", code 1500, while dropping `originId`, `version` or `integrationMetadata`, emptying
+  AppliesTo or renaming the module were each accepted. Its `originalUuid` and `locatorId` name
+  the core `Windows Event Logs` (`9Q5RGnfCRJKNkAig1ZUUOw`, `333ZP6`, as in `integrationMetadata`);
+  `currentUuid`, `authorCompanyUuid` and `checksum` are specific to the exporting portal -- keep
+  them out of a public file. The lint errors on a `wineventlog` LogSource without the block. **The
   LogSource editor offers [portal UI, 2026-11-13]:** filter `op` `Equal`, `NotEqual`, `In`,
   `NotIn`, `RegexMatch`, `RegexNotMatch`; filter `name` `Level`, `LogName`, `Message`,
   `SourceName`, `EventId`; Include/Exclude (`include` `y`/`n`); and an AND/OR choice

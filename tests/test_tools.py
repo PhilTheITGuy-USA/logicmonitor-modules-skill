@@ -233,6 +233,13 @@ SNIPPET_BOOTSTRAP_UNBOUND = (
     "def emit = modLoader.load('lm.emit', '0')\n")
 
 
+# registryMetadata of a Windows Event Logs clone, portal-specific fields blanked. Without the
+# block, the portal UI refuses a wineventlog LogSource with code 1500 [portal, 2026-11-13].
+WINEVENT_REGISTRY = {"currentUuid": "", "originalUuid": "9Q5RGnfCRJKNkAig1ZUUOw", "locatorId": "333ZP6",
+                     "authorCompanyUuid": "", "registryVersion": "1.0.0", "checksum": "",
+                     "namespace": "", "registryId": "", "isChangedFromOrigin": True, "status": ""}
+
+
 def other_module(kind: int, **extra) -> dict:
     """A minimal module of a type the linter gives shared checks only."""
     m = {"name": "Vendor_Product_Thing", "displayedAs": "Vendor Product Thing",
@@ -273,6 +280,10 @@ def other_module_mutations() -> dict[str, dict]:
         "def secret = hostProps.get('vendor.api.password')\nreturn 0\n")
     x = copy.deepcopy(nodes); x["appliesTo"] = ""
     m["DataSource with an empty AppliesTo"] = x
+    m["wineventlog LogSource without registryMetadata"] = other_module(
+        10, collectionMethod="wineventlog", collectionInterval=60,
+        resourceMapping=[{"index": "0", "method": "Token", "comment": "",
+                          "value": "##system.deviceId##", "key": "system.deviceId"}])
     m["DiagnosticSource script not an object"] = other_module(11, script="println 'x'")
     m["script LogSource with no script"] = other_module(
         10, collectionMethod="script", collectionAttrs={"type": "groovy", "content": ""},
@@ -300,7 +311,8 @@ def module_must_pass() -> dict[str, dict]:
         collectionAttrs={"resourceMappingOp": "OR", "useWrittenTime": False, "filterOp": "AND"},
         filters=[{"op": "Equal", "include": "y", "name": "LogName", "index": "1", "value": "Security"}],
         resourceMapping=[{"index": "0", "method": "Token", "value": "##system.deviceId##",
-                          "key": "system.deviceId"}])
+                          "key": "system.deviceId"}],
+        registryMetadata=WINEVENT_REGISTRY)
     m["portal-shape EventSource script over 4096 characters"] = rest_eventsource(
         "// padding " + "x" * 5000 + chr(10) + "return 0" + chr(10))
     m["portal-shape EventSource reading lmaccess.key"] = rest_eventsource(
@@ -339,7 +351,8 @@ def module_warns() -> dict[str, tuple[dict, str]]:
     m["LogSource shipped with an empty AppliesTo"] = (other_module(
         10, appliesTo="", collectionMethod="wineventlog", collectionInterval=60,
         resourceMapping=[{"index": "0", "method": "Token", "comment": "",
-                          "value": "##system.deviceId##", "key": "system.deviceId"}]), "opt-in")
+                          "value": "##system.deviceId##", "key": "system.deviceId"}],
+        registryMetadata=WINEVENT_REGISTRY), "opt-in")
     # The ERT comes from the highest-priority ERI entry across all categories [portal]:
     # at priority 1 the built-in net.l2 entry (priority 2) keeps PhysicalServer.
     m["ERI type override below priority 3"] = (x, "priority")

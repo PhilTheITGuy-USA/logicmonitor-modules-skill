@@ -757,6 +757,14 @@ def check_shared_only(kind: str, module: dict, scripts: dict[str, tuple[str, str
     if kind in ("diagnosticsource", "remediationsource") and not isinstance(
             module.get("script"), dict):
         report.error(f"{kind} script must be {{\"type\": ..., \"content\": ...}}")
+    # A wineventlog LogSource without registryMetadata is refused by the portal UI's import,
+    # "Invalid File, cannot import into LogicModule", code 1500; dropping originId, version,
+    # integrationMetadata or AppliesTo is accepted [portal, 2026-11-13].
+    if (kind == "logsource" and module.get("collectionMethod") == "wineventlog"
+            and not isinstance(module.get("registryMetadata"), dict)):
+        report.error("wineventlog LogSource has no registryMetadata -- the portal refuses the "
+                     "import (\"Invalid File, cannot import into LogicModule\", code 1500); "
+                     "copy the block from a portal export of a Windows Event Logs clone")
     if kind == "logsource" and not module.get("resourceMapping"):
         report.warn("LogSource has no resourceMapping -- logs it imports are not tied to the "
                     "monitored resource (map system.deviceId)")
