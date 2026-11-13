@@ -99,13 +99,21 @@ Common to all: `name`, `description`, `appliesTo`, `group`, `technicalNotes`, pl
   keep the `system.deviceId` mapping (`{"key": "system.deviceId", "method": "literal", "value":
   "##system.deviceId##"}`) or imported logs aren't tied to the resource. The linter warns when it is
   missing.
-- **`wineventlog` LogSource** [from LM's `Windows Event Logs` export] — no script: `"type": 10`,
-  `"collectionMethod": "wineventlog"`, `"collectionInterval": 60`, `"collectionAttrs":
-  {"resourceMappingOp": "OR", "useWrittenTime": false, "filterOp": "AND"}`, `filters` of
-  `{"op", "include": "y"|"n", "name", "index": "1".., "value"}` (`op` `Equal`, or `In` with a
-  pipe-separated value; names such as `LogName`, `EventId`, `Level`), `logFields` of
-  `{"method": "Attribute"|"Token", "comment", "value", "key"}`, and a `resourceMapping` with method
-  `Token`. The stock module excludes `Level` Security Audit Success, so it drops every successful
+- **`wineventlog` LogSource** [portal export of a `Windows Event Logs` clone that imports,
+  2026-11-13] — no script. Top-level keys: `name`, `description`, `appliesTo`, `technicalNotes`,
+  `searchKeywords` (`""`), `group` (`""`), `"type": 10`, `"collectionMethod": "wineventlog"`,
+  `"collectionInterval": 60`, `"collectionAttrs": {"resourceMappingOp": "OR", "useWrittenTime":
+  false, "filterOp": "OR"}`, `filters`, `logFields`, `resourceMapping`, plus the portal-owned
+  `version`, `registryMetadata`, `integrationMetadata` and per-entry `originId`. Filters are
+  `{"op", "include": "y"|"n", "name", "index": "1".., "comment", "value"}`; logFields
+  `{"method": "Attribute"|"Token", "comment", "value", "key"}`; resourceMapping `{"method": "Token",
+  "index": "0", "comment", "value": "##system.deviceId##", "key": "system.deviceId"}`. **A file
+  without `searchKeywords`, `group` and the filter/mapping `comment` was refused by the portal UI
+  with "Invalid File, cannot import into LogicModule", code 1500 [portal, 2026-11-13]**; which
+  difference caused it is not yet isolated, so copy every key, empty ones included. The export
+  shows only `op` `Equal`, `name` `EventId` and `filterOp` `OR`: `op` `In` (pipe-separated), filter
+  names `LogName`/`Level`, `filterOp` `AND` and a `Static` log-field method are [inferred] from LM's
+  docs until a round trip keeps them. The stock module excludes `Level` Security Audit Success, so it drops every successful
   audit event (group, user and policy changes): ingest those with a separate LogSource. The linter
   does not ask a non-script LogSource for a script.
 
