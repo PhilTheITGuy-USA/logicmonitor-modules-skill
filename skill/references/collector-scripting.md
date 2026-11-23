@@ -485,6 +485,21 @@ LM's own credential property names (`ssh.pass`, `wmi.pass`, `jdbc.pass`, `snmp.a
 read by these snippets, so modules that use them keep those names rather than `*.credential`;
 `lm_lint_module.py` allows them. That the portal masks them is **[inferred]**.
 
+**SSH without the snippet: JSch over an exec channel.** A Collector ships JSch, LM's default SSH
+library and the one its Linux SSH modules use. Load it by name
+(`Class.forName('com.jcraft.jsch.JSch', true, loader)`) rather than importing it: the script then
+compiles and runs off-Collector, with the transport behind a binding seam. Use an `exec` channel,
+not an Expect-style prompt match, and LM's property conventions: `ssh.cert` is a **path** to a
+key file on the Collector (default `~/.ssh/id_rsa` when neither it nor `ssh.pass` is set), not
+the key text; `ssh.cert.pass` is the passphrase. **The legacy `com.jcraft` JSch 0.1.55 cannot use
+an RSA key against OpenSSH 8.8+** [live target, 2026-11-23: Alpine 3.20 OpenSSH, `Auth fail`]: it
+signs only with `ssh-rsa` (SHA-1), which current servers refuse by default. Password auth works with
+it, and the maintained `com.github.mwiede` fork (0.2.x, same package) handles RSA PEM keys with
+or without a passphrase. Which JSch a given Collector carries is **[unverified]**: say in
+technicalNotes that a key failing with `Auth fail` needs a password or `PubkeyAcceptedAlgorithms
++ssh-rsa` on the target. Test both JSch versions against a current OpenSSH container
+(MySQL-Tungsten-LogicModule's `tests/live.sh` does).
+
 LogicMonitor's own recipe scripts are starting points, not finished modules: e.g. their HTTP recipe
 emits every response field including strings (No Data, rule 4) and reads `api.token` (unmasked,
 rule 6). Apply the rules in `SKILL.md` to anything you copy.
