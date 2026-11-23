@@ -274,6 +274,10 @@ def other_module_mutations() -> dict[str, dict]:
     x["collectionAttrs"] = {"type": "powershell",
                             "content": "$secret = '##vendor.api.password##'\nWrite-Output 'x'\nexit 0\n"}
     m["PowerShell token for a secret without .credential"] = x
+    # Only LM's exact name is allowed: a near miss is an ordinary unmasked secret.
+    x = copy.deepcopy(nodes)
+    x["collectionAttrs"]["content"] += "\ndef dbPass = hostProps.get('jdbc.mysql.password')\n"
+    m["near miss of LM's jdbc.mysql.pass"] = x
     m["portal-shape EventSource reading a secret without .credential"] = rest_eventsource(
         "def secret = hostProps.get('vendor.api.password')\nreturn 0\n")
     x = copy.deepcopy(nodes); x["appliesTo"] = ""
@@ -302,6 +306,9 @@ def module_must_pass() -> dict[str, dict]:
     x = copy.deepcopy(nodes)
     x["collectionAttrs"]["content"] += "\ndef sshPass = hostProps.get('ssh.pass')\n"
     m["LM built-in credential property ssh.pass"] = x
+    x = copy.deepcopy(nodes)
+    x["collectionAttrs"]["content"] += "\ndef dbPass = hostProps.get('jdbc.mysql.pass')\n"
+    m["LM MySQL package credential property jdbc.mysql.pass"] = x
     m["minimal DiagnosticSource"] = other_module(11, script=groovy)
     # A wineventlog LogSource carries filters, not a script [LM's Windows Event Logs export].
     m["wineventlog LogSource with no script"] = other_module(

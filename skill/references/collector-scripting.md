@@ -480,7 +480,8 @@ errors on a `Snippets.getLoader()` without `.withBinding(...)`.
 SNMP props are case-sensitive in the snippet's eyes: pass
 `hostProps.toProperties().collectEntries { k, v -> [(k.toLowerCase()): v] }`.
 
-LM's own credential property names (`ssh.pass`, `wmi.pass`, `jdbc.pass`, `snmp.authToken`, …) are
+LM's own credential property names (`ssh.pass`, `wmi.pass`, `jdbc.pass`, `snmp.authToken`, …, and
+`jdbc.mysql.user` / `jdbc.mysql.pass`, which LM's MySQL package reads) are
 read by these snippets, so modules that use them keep those names rather than `*.credential`;
 `lm_lint_module.py` allows them. That the portal masks them is **[inferred]**.
 

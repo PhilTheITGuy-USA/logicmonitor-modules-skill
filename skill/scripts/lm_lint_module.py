@@ -41,6 +41,9 @@ SECRET_WORDS = re.compile(r"(token|secret|pass(word)?|api[._-]?key|apikey|\.key$
 BUILTIN_CREDENTIAL_PROPERTIES = {
     "ssh.pass", "ssh.cert.pass", "ssh.publickey.pass", "config.pass", "wmi.pass",
     "jdbc.pass", "jmx.pass", "esx.pass", "snmp.authtoken", "snmp.privtoken",
+    # LogicMonitor's MySQL package (Oracle_MySQL_*) reads jdbc.mysql.user / jdbc.mysql.pass
+    # [LM docs, MySQL Monitoring]; a module beside it must use the same pair.
+    "jdbc.mysql.pass",
     # lm.api reads this name, and the NetScan screen masks it [portal, 2026-10-26].
     "lmaccess.key",
 }
